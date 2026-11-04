@@ -1,0 +1,51 @@
+# PlatformIO & C/C++ Build Artifacts
+.pio/
+compile_commands.json
+*.o
+*.d
+*.a
+*.so
+*.elf
+*.bin
+*.hex
+*.map
+
+# Secrets & Local Credentials
+include/secrets.h
+**/secrets.h
+*secret*
+!include/secrets.example.h
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Python & E2E Test Artifacts / Binaries
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+test/e2e/e2e_report.json
+test/e2e/empirical_event_pump_harness
+test/e2e/test_scheduler_soak
+test/e2e/tier5_adversarial/empirical_adversarial_harness
+
+# Personal Notes, Agent Logs & Internal Scratch Files
+.agents/
+.gemini/
+scratch/
+ChatGPT*.md
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md
+
+# IDEs & OS Metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*~
+*.swp
