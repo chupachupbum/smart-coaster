@@ -183,11 +183,11 @@ void setup() {
     delay(50); // Transient UART voltage stabilization
 
     Serial.println(F("\n=================================================="));
-    Serial.println(F("  ESP32-C3 SMART CUP STAND - SYSTEM INTEGRATION"));
+    Serial.print(F("  "));
+    Serial.println(F(BOARD_BANNER_NAME));
     Serial.println(F("=================================================="));
 
-    // 2. Safe I2C Bus Initialization: GPIO 4 (SDA), GPIO 5 (SCL) at 400kHz Fast-Mode
-    // Avoids default Arduino Wire pins (GPIO 8/9 strapping pins)
+    // 2. Safe I2C Bus Initialization: PIN_OLED_SDA, PIN_OLED_SCL at 400kHz Fast-Mode
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
     Wire.setClock(400000);
 
@@ -199,14 +199,19 @@ void setup() {
         Serial.println(F("[WARN] SSD1306 OLED not detected @ 0x3C; continuing in headless mode"));
     }
 
-    // 4. Status LED Initialization (LEDC PWM on GPIO 3, 5kHz, 8-bit)
+    // 4. Status LED Initialization (LEDC PWM on PIN_STATUS_LED, 5kHz, 8-bit)
     status_led.begin(PIN_STATUS_LED, LEDC_PWM_CHANNEL, LEDC_PWM_FREQ_HZ, LEDC_PWM_RESOLUTION);
     status_led.update(0, CupState::EMPTY, AlertState::IDLE);
-    Serial.println(F("[BOOT] Status LED initialized on GPIO 3 (5kHz PWM)"));
+    Serial.print(F("[BOOT] Status LED initialized on GPIO "));
+    Serial.print(PIN_STATUS_LED);
+    Serial.println(F(" (5kHz PWM)"));
 
-    // 5. HX711 Weight Sensor Interface: GPIO 6 (DT), GPIO 7 (SCK), 0.42 counts/g
+    // 5. HX711 Weight Sensor Interface: PIN_HX711_DT (DT), PIN_HX711_SCK (SCK), 0.42 counts/g
     weight_sensor.begin(PIN_HX711_DT, PIN_HX711_SCK, CALIBRATION_SCALE_FACTOR);
-    Serial.println(F("[BOOT] HX711 weight sensor initialized on GPIO 6/7"));
+    Serial.print(F("[BOOT] HX711 weight sensor initialized on GPIO "));
+    Serial.print(PIN_HX711_DT);
+    Serial.print(F("/"));
+    Serial.println(PIN_HX711_SCK);
 
     // Bounded non-blocking weight sensor priming (<= 200ms timeout)
     // Prevents hanging in setup() if transducer is disconnected or floating

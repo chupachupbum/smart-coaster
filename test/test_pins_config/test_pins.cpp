@@ -74,12 +74,38 @@ void test_pin_uniqueness(void) {
     }
 }
 
+void test_esp32_classic_pin_safety_invariants(void) {
+    const int classic_pins[] = {
+        ESP32_CLASSIC_PIN_OLED_SDA,
+        ESP32_CLASSIC_PIN_OLED_SCL,
+        ESP32_CLASSIC_PIN_HX711_DT,
+        ESP32_CLASSIC_PIN_HX711_SCK,
+        ESP32_CLASSIC_PIN_STATUS_LED,
+        ESP32_CLASSIC_PIN_UART0_TX,
+        ESP32_CLASSIC_PIN_UART0_RX
+    };
+    const size_t num_pins = sizeof(classic_pins) / sizeof(classic_pins[0]);
+
+    for (size_t i = 0; i < num_pins; ++i) {
+        for (size_t j = i + 1; j < num_pins; ++j) {
+            TEST_ASSERT_NOT_EQUAL(classic_pins[i], classic_pins[j]);
+        }
+        TEST_ASSERT_TRUE(classic_pins[i] < ESP32_CLASSIC_FLASH_PIN_MIN ||
+                         classic_pins[i] > ESP32_CLASSIC_FLASH_PIN_MAX);
+        TEST_ASSERT_NOT_EQUAL(PIN_STRAP_GPIO0, classic_pins[i]);
+        TEST_ASSERT_NOT_EQUAL(PIN_STRAP_GPIO2, classic_pins[i]);
+        TEST_ASSERT_NOT_EQUAL(PIN_STRAP_GPIO12, classic_pins[i]);
+        TEST_ASSERT_NOT_EQUAL(PIN_STRAP_GPIO15, classic_pins[i]);
+    }
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_pin_assignments);
     RUN_TEST(test_calibration_and_i2c_constants);
     RUN_TEST(test_strapping_avoidance_integrity);
     RUN_TEST(test_pin_uniqueness);
+    RUN_TEST(test_esp32_classic_pin_safety_invariants);
     return UNITY_END();
 }
 

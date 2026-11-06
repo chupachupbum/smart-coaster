@@ -67,7 +67,7 @@ void DisplayOled::showBootScreen(const char* title, const char* subtitle) {
 
     // Bottom badge
     display_.setCursor(18, 48);
-    display_.print(F("ESP32-C3 Coaster"));
+    display_.print(F(BOARD_OLED_BADGE));
 
     display_.display();
 }
