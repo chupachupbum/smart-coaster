@@ -1,0 +1,4 @@
+(version 1)
+(rule "Mounting hole edge clearance"
+    (condition "A.insideCourtyard('H1') || A.insideCourtyard('H2') || A.insideCourtyard('H3') || A.insideCourtyard('H4')")
+    (constraint edge_clearance (min -1.0mm)))

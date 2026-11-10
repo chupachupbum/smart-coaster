@@ -1,0 +1,603 @@
+{
+  "version": 1,
+  "author": "Smart Cup Stand Engineering Team",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c3-devkitm-1",
+      "id": "esp",
+      "top": -80,
+      "left": 10,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hx711",
+      "id": "hx711",
+      "top": -35,
+      "left": -145,
+      "attrs": {
+        "type": "5kg"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 95,
+      "left": 25,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led0",
+      "top": -235.0,
+      "left": -20.0,
+      "rotate": 0.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led1",
+      "top": -217.1,
+      "left": 69.9,
+      "rotate": 22.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led2",
+      "top": -166.2,
+      "left": 146.2,
+      "rotate": 45.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led3",
+      "top": -89.9,
+      "left": 197.1,
+      "rotate": 67.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led4",
+      "top": 0.0,
+      "left": 215.0,
+      "rotate": 90.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led5",
+      "top": 89.9,
+      "left": 197.1,
+      "rotate": 112.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led6",
+      "top": 166.2,
+      "left": 146.2,
+      "rotate": 135.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led7",
+      "top": 217.1,
+      "left": 69.9,
+      "rotate": 157.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led8",
+      "top": 235.0,
+      "left": -20.0,
+      "rotate": 180.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led9",
+      "top": 217.1,
+      "left": -109.9,
+      "rotate": 202.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led10",
+      "top": 166.2,
+      "left": -186.2,
+      "rotate": 225.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led11",
+      "top": 89.9,
+      "left": -237.1,
+      "rotate": 247.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led12",
+      "top": 0.0,
+      "left": -255.0,
+      "rotate": 270.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led13",
+      "top": -89.9,
+      "left": -237.1,
+      "rotate": 292.5,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led14",
+      "top": -166.2,
+      "left": -186.2,
+      "rotate": 315.0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-neopixel",
+      "id": "led15",
+      "top": -217.1,
+      "left": -109.9,
+      "rotate": 337.5,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "esp:5V.1",
+      "hx711:VCC",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:GND.2",
+      "hx711:GND",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:6",
+      "hx711:DT",
+      "gold",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:7",
+      "hx711:SCK",
+      "cyan",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:3",
+      "r1:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r1:2",
+      "led0:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led0:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led0:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led0:DOUT",
+      "led1:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led1:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led1:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led1:DOUT",
+      "led2:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led2:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led2:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led2:DOUT",
+      "led3:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led3:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led3:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led3:DOUT",
+      "led4:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led4:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led4:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led4:DOUT",
+      "led5:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led5:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led5:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led5:DOUT",
+      "led6:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led6:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led6:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led6:DOUT",
+      "led7:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led7:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led7:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led7:DOUT",
+      "led8:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led8:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led8:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led8:DOUT",
+      "led9:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led9:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led9:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led9:DOUT",
+      "led10:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led10:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led10:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led10:DOUT",
+      "led11:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led11:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led11:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led11:DOUT",
+      "led12:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led12:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led12:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led12:DOUT",
+      "led13:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led13:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led13:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led13:DOUT",
+      "led14:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led14:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led14:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led14:DOUT",
+      "led15:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led15:VDD",
+      "esp:5V.1",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "led15:VSS",
+      "esp:GND.1",
+      "black",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "serialMonitor": {
+    "display": "always",
+    "newline": "lf"
+  },
+  "dependencies": {}
+}

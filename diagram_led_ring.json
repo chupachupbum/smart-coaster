@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "author": "Smart Cup Stand Engineering Team",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c3-devkitm-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hx711",
+      "id": "hx711",
+      "top": -40,
+      "left": -170,
+      "attrs": {
+        "type": "5kg"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 85,
+      "left": 125,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "wokwi-led-ring",
+      "id": "ring1",
+      "top": -115,
+      "left": 155,
+      "attrs": {
+        "pixels": "16"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "esp:5V.1",
+      "hx711:VCC",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:GND.2",
+      "hx711:GND",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:6",
+      "hx711:DT",
+      "gold",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:7",
+      "hx711:SCK",
+      "cyan",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:5V.1",
+      "ring1:VCC",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:GND.1",
+      "ring1:GND",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:3",
+      "r1:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r1:2",
+      "ring1:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ]
+  ],
+  "serialMonitor": {
+    "display": "always",
+    "newline": "lf"
+  },
+  "dependencies": {}
+}
