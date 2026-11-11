@@ -6026,7 +6026,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal"
 			(at 175.26 144.78 0)
 			(hide yes)
 			(show_name no)
@@ -6070,7 +6070,7 @@
 		)
 		(pin "4"
 			(uuid "8e57a748-2368-4b40-a7a6-c74d5264ad8f")
-		)    (property "LCSC" "C22325128"
+		)    (property "LCSC" "C492412"
       (at 0 0 0)
       (effects
         (font
@@ -6208,7 +6208,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Horizontal"
 			(at 236.22 144.78 0)
 			(hide yes)
 			(show_name no)
@@ -6249,7 +6249,7 @@
 		)
 		(pin "3"
 			(uuid "a0956c9b-db0b-4c4d-9163-bd8effdd6f78")
-		)    (property "LCSC" "C492401"
+		)    (property "LCSC" "C492411"
       (at 0 0 0)
       (effects
         (font

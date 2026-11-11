@@ -2,15 +2,15 @@ Comment,Designator,Footprint,Quantity,LCSC Part #
 10uF,"C1, C2, C3, C4",Capacitor_SMD:C_0805_2012Metric,4,C15850
 100nF,"C5, C6, C7, C8, C9, C10, C11",Capacitor_SMD:C_0603_1608Metric,7,C14663
 TYPE-C-31-M-12,J1,Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12,1,C165948
-Conn_01x04_Pin,J2,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,1,C22325128
-Conn_01x03_Pin,J3,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,1,C492401
+Conn_01x04_Pin,J2,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Horizontal,1,C492412
+Conn_01x03_Pin,J3,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Horizontal,1,C492411
 SS8550,Q1,Package_TO_SOT_SMD:SOT-23,1,C2145
 5.1k,"R1, R2",Resistor_SMD:R_0603_1608Metric,2,C23186
-100,"R10, R11",Resistor_SMD:R_0603_1608Metric,2,C22775
 10k,"R3, R4, R5, R6",Resistor_SMD:R_0603_1608Metric,4,C25804
 330,R7,Resistor_SMD:R_0603_1608Metric,1,C23138
 20k,R8,Resistor_SMD:R_0603_1608Metric,1,C4184
 8.2k,R9,Resistor_SMD:R_0603_1608Metric,1,C23254
+100,"R10, R11",Resistor_SMD:R_0603_1608Metric,2,C22775
 SW_Push,"SW1, SW2",Button_Switch_SMD:SW_SPST_TL3342,2,C318884
 ESP32-C3-WROOM-02,U1,RF_Module:ESP32-C3-WROOM-02,1,C2934560
 AMS1117-3.3,U2,Package_TO_SOT_SMD:SOT-223-3_TabPin2,1,C6186

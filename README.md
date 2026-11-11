@@ -29,7 +29,7 @@ The firmware separates hardware-independent hydration state machines from ESP32 
 ├── docs/
 │   └── app-screens/                 # Companion mobile app UI prototypes (dashboard, alerts, analytics, config)
 ├── hardware/
-│   └── smart_cup_stand_pcb/         # KiCad 10 circular PCB project & JLCPCB manufacturing package
+│   └── smart_cup_stand_pcb/         # KiCad 10 D-shaped PCB project & JLCPCB manufacturing package
 │       ├── smart_cup_stand_pcb.kicad_pro
 │       ├── smart_cup_stand_pcb.kicad_sch
 │       ├── smart_cup_stand_pcb.kicad_pcb
@@ -101,17 +101,18 @@ In addition to `diagram.json`, the repository provides two NeoPixel ring simulat
 
 ## Custom PCB & JLCPCB Manufacturing (`hardware/smart_cup_stand_pcb/`)
 
-The `hardware/smart_cup_stand_pcb/` directory contains a production-ready 2-layer circular KiCad 10 PCB design (0 ERC violations, 0 DRC violations) with a full JLCPCB SMT assembly package:
+`hardware/smart_cup_stand_pcb/` holds a 2-layer D-shaped ~50 mm x 40 mm KiCad 10 PCB with 0 ERC violations, 0 DRC violations, and a complete JLCPCB SMT assembly package.
 
-- **MCU & Wireless**: `ESP32-C3-WROOM-02` (`U1`, LCSC `C2934560`) with tactile Reset (`SW1`) and Boot (`SW2`) buttons (`TL3342`).
-- **Power Supply**: USB-C power/debug receptacle (`J1`, HRO `TYPE-C-31-M-12`, LCSC `C165948`) with 5.1 kΩ CC1/CC2 pulldowns (`R1`, `R2`) feeding an `AMS1117-3.3` LDO (`U2`, LCSC `C6186`) and 10 uF / 100 nF decoupling network (`C1..C11`).
-- **Analog Front-End**: Onboard `HX711` (`U3`, SOIC-16, LCSC `C43656`) with `SS8550` PNP high-side AVDD transistor (`Q1`, LCSC `C2145`), 20 kΩ / 8.2 kΩ regulator divider (`R8`, `R9`), 100 Ω differential input filter (`R10`, `R11`), 4-pin Wheatstone bridge header (`J2`), and 3-pin WS2812 LED ring header (`J3`).
-- **Manufacturing Outputs (`hardware/smart_cup_stand_pcb/manufacturing/`)**:
-  - `gerbers/`: 2-layer Gerber X2 files (`.gbr`, `.gbrjob`) and Excellon drill file (`smart_cup_stand_pcb.drl`).
-  - `bom.csv`, `jlcpcb_bom.csv`, `cpl.csv`: Bill of Materials with LCSC part numbers and pick-and-place centroid coordinates.
-  - `schematic.pdf`, `pcb.pdf`: Printable schematic and PCB artwork plots.
-  - `drc_report.json`, `dfm_profile_check.json`, `pcb_quality_gate.json`, `schematic_quality_gate.json`: Automated verification signoff reports.
-  - `renders/`: 3D CAD views (`pcb_cad_3d_top.png`, `pcb_cad_3d_bottom.png`, `pcb_cad_3d_angle.png`) and photorealistic board renders (`pcb_reallife_top.jpg`, `pcb_reallife_angle.jpg`).
+- **Board outline and mounting.** An R = 48 mm curved left USB-C edge fits inside a 100 mm round coaster with a 2 mm enclosure wall. Four inward-shifted M3 mounting holes `H1..H4` anchor the board clear of the curved shell.
+- **USB-C power and regulation.** USB-C receptacle `J1`, HRO `TYPE-C-31-M-12`, LCSC `C165948`, protrudes 1.05 mm past the R = 48 mm arc apex so USB-C cable plugs clear the curved shell. Two 5.1 kΩ CC1 and CC2 pulldowns `R1` and `R2` feed an `AMS1117-3.3` LDO `U2`, LCSC `C6186`, and a 10 uF and 100 nF decoupling network `C1..C11`.
+- **Planar right-angle headers and Wi-Fi corridor.** Planar right-angle 2.54 mm L-shape male pin headers sit along the straight right edge to keep mated wire plugs horizontal and thin. Top-right 4-pin Wheatstone load-cell bridge header `J2`, XFCN `PZ254R-11-04P`, LCSC `C492412`, carries silkscreen labels `E+`, `E-`, `A-`, `A+` and feeds the top-strip onboard `HX711` `U3`. Bottom-right 3-pin WS2812 LED ring header `J3`, XFCN `PZ254R-11-03P`, LCSC `C492411`, carries silkscreen labels `5V`, `DIN`, `GND`. `J2` and `J3` flank an open central Wi-Fi antenna corridor for `U1`, `ESP32-C3-WROOM-02`, LCSC `C2934560`.
+- **Analog front-end and buttons.** Top-strip 24-bit ADC `U3`, `HX711` SOIC-16, LCSC `C43656`, pairs with an `SS8550` PNP high-side AVDD transistor `Q1`, LCSC `C2145`, a 20 kΩ and 8.2 kΩ regulator divider `R8` and `R9`, and a 100 Ω differential input filter `R10` and `R11`. Tactile `TL3342` Reset `SW1` and Boot `SW2` buttons sit along the bottom strip.
+- **Manufacturing outputs.** `hardware/smart_cup_stand_pcb/manufacturing/` includes the fabrication and SMT assembly files:
+  - `gerbers/` holds 2-layer Gerber X2 files `.gbr` and `.gbrjob` plus the Excellon drill file `smart_cup_stand_pcb.drl`.
+  - `bom.csv`, `jlcpcb_bom.csv`, and `cpl.csv` list bill-of-materials entries with LCSC part numbers and pick-and-place centroid coordinates.
+  - `schematic.pdf` and `pcb.pdf` provide printable schematic and PCB artwork plots.
+  - `drc_report.json`, `dfm_profile_check.json`, `pcb_quality_gate.json`, and `schematic_quality_gate.json` record automated ERC, DRC, and JLCPCB DFM signoff results.
+  - `renders/` contains raytraced 3D CAD views `pcb_cad_3d_top.png`, `pcb_cad_3d_bottom.png`, and `pcb_cad_3d_angle.png` alongside photorealistic board renders `pcb_reallife_top.jpg` and `pcb_reallife_angle.jpg`.
 
 ![PCB 3D Render](./hardware/smart_cup_stand_pcb/manufacturing/renders/pcb_reallife_angle.jpg)
 
