@@ -301,7 +301,7 @@
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
         "name": "Analog_Sense",
-        "pcb_color": "rgb(0, 200, 255)",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 3,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.25,
@@ -339,7 +339,7 @@
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
         "name": "Power_3V3",
-        "pcb_color": "rgb(255, 128, 0)",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 2,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.4,
@@ -358,7 +358,7 @@
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
         "name": "Power_5V",
-        "pcb_color": "rgb(255, 0, 0)",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 1,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.5,
@@ -377,7 +377,7 @@
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
         "name": "USB_Data",
-        "pcb_color": "rgb(0, 255, 0)",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": 4,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.25,
@@ -406,8 +406,16 @@
         "pattern": "+3V3"
       },
       {
+        "netclass": "Power_3V3",
+        "pattern": "LC_E+"
+      },
+      {
         "netclass": "Analog_Sense",
-        "pattern": "LC_*"
+        "pattern": "LC_A*"
+      },
+      {
+        "netclass": "Analog_Sense",
+        "pattern": "LC_E-"
       },
       {
         "netclass": "Analog_Sense",
