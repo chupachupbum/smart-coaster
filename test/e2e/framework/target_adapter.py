@@ -34,13 +34,8 @@ class TargetAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_display(self) -> Dict[str, Any]:
-        """Retrieve simulated OLED display zones."""
-        pass
-
-    @abstractmethod
     def get_led(self) -> Dict[str, Any]:
-        """Retrieve simulated status LED PWM breathing state."""
+        """Retrieve simulated 16-LED ring state."""
         pass
 
     @abstractmethod
@@ -73,9 +68,6 @@ class VirtualDeviceAdapter(TargetAdapter):
 
     def get_notifications(self) -> List[Dict[str, Any]]:
         return list(self.device.dispatched_notifications)
-
-    def get_display(self) -> Dict[str, Any]:
-        return self.device.get_display_state()
 
     def get_led(self) -> Dict[str, Any]:
         return self.device.get_led_state()

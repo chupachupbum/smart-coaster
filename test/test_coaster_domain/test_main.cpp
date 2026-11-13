@@ -30,6 +30,15 @@ static void lift_cup(uint32_t start_ms) {
     feed_weight(0.0f, start_ms, 200, 50);
 }
 
+// Helper: Simulate tap gesture
+static void simulate_tap(float weight_g, uint32_t start_ms, uint32_t duration_ms) {
+    domain->update(weight_g, start_ms);
+    if (duration_ms > 10) {
+        domain->update(weight_g, start_ms + duration_ms / 2);
+    }
+    domain->update(0.0f, start_ms + duration_ms);
+}
+
 // ============================================================================
 // 1. Initial State & Defaults
 // ============================================================================
@@ -765,6 +774,118 @@ void test_auto_tare_does_not_spam_at_zero(void) {
 }
 
 // ============================================================================
+// 10. Load-Cell Triple-Tap Gesture Detector Tests
+// ============================================================================
+
+void test_triple_tap_gesture_triggers_ap_mode_once(void) {
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Tap 1: 80g, 100ms duration (1000ms -> 1100ms)
+    simulate_tap(80.0f, 1000, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Tap 2: 75g, 150ms duration (1500ms -> 1650ms)
+    simulate_tap(75.0f, 1500, 150);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Tap 3: 90g, 120ms duration (2000ms -> 2120ms)
+    simulate_tap(90.0f, 2000, 120);
+
+    // AP trigger must be pending and consumed exactly once
+    TEST_ASSERT_TRUE(domain->consume_wifi_ap_trigger());
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Event queue invariant: taps only emit STATE_CHANGE bounces, no unhandled events
+    while (domain->has_events()) {
+        DomainEvent ev = domain->pop_event();
+        TEST_ASSERT_TRUE(ev.type == DomainEventType::STATE_CHANGE);
+    }
+}
+
+void test_tap_gesture_rejections_and_window_timeout(void) {
+    // 1. Light chatter: 35g (< 60g threshold)
+    simulate_tap(35.0f, 1000, 100);
+    simulate_tap(35.0f, 1300, 100);
+    simulate_tap(35.0f, 1600, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // 2. Too-brief spike: 20ms (< 40ms threshold)
+    simulate_tap(80.0f, 3000, 20);
+    simulate_tap(80.0f, 3200, 20);
+    simulate_tap(80.0f, 3400, 20);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // 3. Too-slow hold: 700ms (> 600ms threshold)
+    simulate_tap(80.0f, 5000, 700);
+    simulate_tap(80.0f, 6000, 700);
+    simulate_tap(80.0f, 7000, 700);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // 4. Taps spaced > 4000ms apart (window timeout)
+    simulate_tap(80.0f, 10000, 100); // Tap 1
+    simulate_tap(80.0f, 12000, 100); // Tap 2
+    // Tap 3 at 17000ms (> 4000ms from tap 1 and tap 2)
+    simulate_tap(80.0f, 17000, 100); // Tap 3
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+}
+
+void test_tap_gesture_boundaries(void) {
+    // Exact 60.0g, exact 40ms duration
+    simulate_tap(60.0f, 1000, 40);
+    simulate_tap(60.0f, 1200, 40);
+    simulate_tap(60.0f, 1400, 40);
+    TEST_ASSERT_TRUE(domain->consume_wifi_ap_trigger());
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Exact 600ms duration at 60.0g
+    simulate_tap(60.0f, 2000, 600);
+    simulate_tap(60.0f, 2800, 600);
+    simulate_tap(60.0f, 3600, 600);
+    TEST_ASSERT_TRUE(domain->consume_wifi_ap_trigger());
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Sub-threshold weight (59.9g < 60.0g)
+    simulate_tap(59.9f, 5000, 100);
+    simulate_tap(59.9f, 5200, 100);
+    simulate_tap(59.9f, 5400, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+}
+
+void test_cup_placement_clears_partial_tap_count(void) {
+    // 2 valid taps on empty stand
+    simulate_tap(80.0f, 1000, 100);
+    simulate_tap(80.0f, 1300, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Place cup and stabilize into CUP_PRESENT
+    place_and_stabilize(350.0f, 1600);
+    TEST_ASSERT_EQUAL(CupState::CUP_PRESENT, domain->get_status().cup_state);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Cup removed and reset called while coaster is empty
+    domain->update(0.0f, 4000);
+    domain->reset();
+    TEST_ASSERT_EQUAL(CupState::EMPTY, domain->get_status().cup_state);
+
+    // A single 3rd tap at 4200ms must NOT trigger (since previous taps were cleared)
+    simulate_tap(80.0f, 4200, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+
+    // Completing 2 more taps in the new sequence WILL trigger AP mode
+    simulate_tap(80.0f, 4500, 100);
+    simulate_tap(80.0f, 4800, 100);
+    TEST_ASSERT_TRUE(domain->consume_wifi_ap_trigger());
+}
+
+void test_reset_clears_tap_state(void) {
+    simulate_tap(80.0f, 1000, 100);
+    simulate_tap(80.0f, 1300, 100);
+    domain->reset();
+    simulate_tap(80.0f, 1600, 100);
+    TEST_ASSERT_FALSE(domain->consume_wifi_ap_trigger());
+}
+
+// ============================================================================
 // Unity Test Entry Point
 // ============================================================================
 
@@ -821,6 +942,13 @@ int main(int argc, char **argv) {
     RUN_TEST(test_stability_filter_with_simulated_scheduler_jitter);
     RUN_TEST(test_reset_while_cup_lifted_restores_empty_and_idle);
     RUN_TEST(test_auto_tare_does_not_spam_at_zero);
+
+    // 10. Load-Cell Triple-Tap Gesture
+    RUN_TEST(test_triple_tap_gesture_triggers_ap_mode_once);
+    RUN_TEST(test_tap_gesture_rejections_and_window_timeout);
+    RUN_TEST(test_tap_gesture_boundaries);
+    RUN_TEST(test_cup_placement_clears_partial_tap_count);
+    RUN_TEST(test_reset_clears_tap_state);
 
     return UNITY_END();
 }

@@ -42,6 +42,46 @@
 #define WIFI_MAX_RETRY_BACKOFF_MS   60000UL
 #endif
 
+#ifndef WIFI_FAST_RETRY_MS
+#define WIFI_FAST_RETRY_MS          5000UL
+#endif
+
+#ifndef WIFI_AP_SSID
+#define WIFI_AP_SSID                "SmartCoaster-Setup"
+#endif
+
+#ifndef WIFI_MDNS_HOSTNAME
+#define WIFI_MDNS_HOSTNAME          "smart-coaster"
+#endif
+
+#ifndef WIFI_WEB_PORT
+#define WIFI_WEB_PORT               80
+#endif
+
+#ifndef WIFI_DNS_PORT
+#define WIFI_DNS_PORT               53
+#endif
+
+#ifndef WIFI_AP_FALLBACK_FAILURES
+#define WIFI_AP_FALLBACK_FAILURES   2
+#endif
+
+#ifndef WIFI_AP_BG_RETRY_MS
+#define WIFI_AP_BG_RETRY_MS         30000UL
+#endif
+
+#ifndef WIFI_AP_SHUTDOWN_GRACE_MS
+#define WIFI_AP_SHUTDOWN_GRACE_MS   3000UL
+#endif
+
+#ifndef WIFI_SWITCH_DEFER_MS
+#define WIFI_SWITCH_DEFER_MS        100UL
+#endif
+
+#ifndef WIFI_SCAN_MAX_RESULTS
+#define WIFI_SCAN_MAX_RESULTS       16
+#endif
+
 // ----------------------------------------------------------------------------
 // 2. ntfy.sh HTTP Push Notification Configuration
 // ----------------------------------------------------------------------------
@@ -71,6 +111,15 @@
 // Certified invariant matching E2E test suite.
 #ifndef NTFY_MAX_QUEUE_CAPACITY
 #define NTFY_MAX_QUEUE_CAPACITY     3
+#endif
+
+// HTTP request retry configuration
+#ifndef NTFY_MAX_POST_RETRIES
+#define NTFY_MAX_POST_RETRIES       3
+#endif
+
+#ifndef NTFY_RETRY_BASE_MS
+#define NTFY_RETRY_BASE_MS          2000UL
 #endif
 
 // ----------------------------------------------------------------------------
@@ -135,6 +184,29 @@
 
 #ifndef TELEMETRY_HEARTBEAT_INTERVAL_MS
 #define TELEMETRY_HEARTBEAT_INTERVAL_MS 5000UL
+#endif
+
+// ----------------------------------------------------------------------------
+// 5. Load-Cell Tap Gesture Configuration
+// ----------------------------------------------------------------------------
+#ifndef TAP_GESTURE_MIN_WEIGHT_G
+#define TAP_GESTURE_MIN_WEIGHT_G    60.0f
+#endif
+
+#ifndef TAP_GESTURE_MIN_MS
+#define TAP_GESTURE_MIN_MS          40UL
+#endif
+
+#ifndef TAP_GESTURE_MAX_MS
+#define TAP_GESTURE_MAX_MS          600UL
+#endif
+
+#ifndef TAP_GESTURE_WINDOW_MS
+#define TAP_GESTURE_WINDOW_MS       4000UL
+#endif
+
+#ifndef TAP_GESTURE_REQUIRED_COUNT
+#define TAP_GESTURE_REQUIRED_COUNT  3
 #endif
 
 #endif // CONFIG_H_

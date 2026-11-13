@@ -64,31 +64,50 @@ class TestT5DriverFallbacksBoundaries:
             assert "status" in resp or "type" in resp
 
     def test_status_led_visual_patterns(self):
-        """Verify status LED states across all lifecycle stages."""
+        """Verify 16-LED ring visual states, chaining, and alerts across all lifecycle stages."""
         harness = E2ETestHarness()
 
-        # Stage 1: Empty -> LED OFF
+        # Stage 1: Empty -> LED ring OFF
         assert harness.led["mode"] == "OFF"
-        assert harness.led["duty"] == 0
+        assert harness.led["active_leds"] == 0
 
-        # Stage 2: Settling -> LED BLINK
+        # Stage 2: Settling -> LED ring SPINNER (3-pixel comet)
         harness.tick(duration_ms=200, step_ms=50, weight_g=200.0)
-        assert harness.led["mode"] == "BLINK"
+        assert harness.led["mode"] == "SPINNER"
+        assert harness.led["active_leds"] == 3
 
-        # Stage 3: Stable cup present -> LED STEADY_LOW (ambient glow)
+        # Stage 3: Stable cup present -> INTAKE_ARC for 3s, then AMBIENT_WARM
         harness.tick(duration_ms=1800, step_ms=50, weight_g=200.0)
-        assert harness.led["mode"] == "STEADY_LOW"
-        assert harness.led["duty"] == 8
+        assert harness.led["mode"] == "INTAKE_ARC"
+        assert harness.led["active_leds"] >= 1
+        harness.advance_time(duration_ms=3000, step_ms=100)
+        assert harness.led["mode"] == "AMBIENT_WARM"
+        assert harness.led["active_leds"] == 16
 
-        # Stage 4: Return cup -> back to STEADY_LOW
+        # Stage 4: Lift cup -> LIFTED_GLOW, return without drink -> AMBIENT_WARM
         harness.lift_cup(duration_ms=1000)
+        assert harness.led["mode"] == "LIFTED_GLOW"
+        assert harness.led["active_leds"] == 16
         harness.return_cup(200.0, duration_ms=2000)
-        assert harness.led["mode"] == "STEADY_LOW"
+        assert harness.led["mode"] == "AMBIENT_WARM"
 
-        # Stage 5: Hydration alert -> LED BREATHING
+        # Stage 5: Drink logged -> RIPPLE_DRINK (1s) -> INTAKE_ARC (3s) -> AMBIENT_WARM
+        harness.take_drink(sip_ml=100.0, duration_ms=1600)
+        assert harness.led["mode"] == "RIPPLE_DRINK"
+        harness.advance_time(duration_ms=1100, step_ms=100)
+        assert harness.led["mode"] == "INTAKE_ARC"
+        assert harness.led["active_leds"] >= 1
+        harness.advance_time(duration_ms=3100, step_ms=100)
+        assert harness.led["mode"] == "AMBIENT_WARM"
+
+        # Stage 6: Hydration alerts -> ALERT_BREATHING (due at 45s demo), then ALERT_URGENT (repeat +5s)
         harness.send_command("DEMO ON")
-        harness.advance_time(duration_ms=46000, step_ms=1000)
-        assert harness.led["mode"] == "BREATHING"
+        harness.advance_time(duration_ms=42000, step_ms=1000)
+        assert harness.led["mode"] == "ALERT_BREATHING"
+        assert harness.led["is_alert"] is True
+
+        harness.advance_time(duration_ms=5000, step_ms=1000)
+        assert harness.led["mode"] == "ALERT_URGENT"
         assert harness.led["is_alert"] is True
 
     def test_cup_presence_and_lift_hysteresis_boundaries(self):

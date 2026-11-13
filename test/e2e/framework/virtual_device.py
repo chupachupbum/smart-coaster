@@ -68,6 +68,12 @@ class VirtualCoasterDevice:
         self.session_active = False
         self.goal_notified = False
 
+        # Transient LED ring animation timestamps
+        self.last_cup_placed_ms: Optional[int] = None
+        self.last_drink_logged_ms: Optional[int] = None
+        self.last_goal_reached_ms: Optional[int] = None
+        self.last_refill_ms: Optional[int] = None
+
         # Clocks and buffers
         self.current_time_ms = 0
         self.uart_output_buffer: List[str] = []
@@ -180,6 +186,7 @@ class VirtualCoasterDevice:
                 self.alert_state = "COUNTING"
                 self.last_drink_time_ms = timestamp_ms
                 self.session_active = True
+                self.last_cup_placed_ms = timestamp_ms
                 self._emit_event(
                     "STATE_CHANGE",
                     {
@@ -194,6 +201,7 @@ class VirtualCoasterDevice:
             if net_w < self.CUP_LIFT_MAX_G:
                 self.cup_state = "CUP_LIFTED"
                 self.stability_samples.clear()
+                self.last_cup_placed_ms = None
                 self._emit_event(
                     "STATE_CHANGE",
                     {"old_state": "CUP_PRESENT", "new_state": "CUP_LIFTED"},
@@ -230,6 +238,7 @@ class VirtualCoasterDevice:
                     self.baseline_weight_g = return_w
                     self.alert_state = "COUNTING"
                     self.last_drink_time_ms = timestamp_ms
+                    self.last_drink_logged_ms = timestamp_ms
                     self._emit_event(
                         "DRINK_LOGGED",
                         {
@@ -247,6 +256,7 @@ class VirtualCoasterDevice:
                     # Check goal completion
                     if self.consumed_today_ml >= self.daily_goal_ml and not self.goal_notified:
                         self.goal_notified = True
+                        self.last_goal_reached_ms = timestamp_ms
                         self._emit_event(
                             "GOAL_REACHED",
                             {"goal_ml": self.daily_goal_ml, "consumed_ml": round(self.consumed_today_ml, 1)},
@@ -262,6 +272,7 @@ class VirtualCoasterDevice:
                     # Refill detected
                     refill_gain = return_w - self.baseline_weight_g
                     self.baseline_weight_g = return_w
+                    self.last_refill_ms = timestamp_ms
                     self._emit_event(
                         "REFILL_DETECTED",
                         {
@@ -363,6 +374,10 @@ class VirtualCoasterDevice:
             self.last_drink_time_ms = self.current_time_ms
             self.last_alert_time_ms = 0
             self.goal_notified = False
+            self.last_cup_placed_ms = None
+            self.last_drink_logged_ms = None
+            self.last_goal_reached_ms = None
+            self.last_refill_ms = None
             resp = {
                 "status": "OK",
                 "command": "RESET",
@@ -445,45 +460,124 @@ class VirtualCoasterDevice:
             "event_data": {},
         }
 
-    def get_display_state(self) -> Dict[str, Any]:
-        """Returns the simulated OLED display zones."""
-        badge = {
-            "EMPTY": "[EMPTY]",
-            "STABILIZING": "[WAIT]",
-            "CUP_PRESENT": "[CUP]",
-            "CUP_LIFTED": "[LIFT]",
-            "RETURN_STABILIZING": "[WAIT]",
-        }.get(self.cup_state, "[EMPTY]")
-
-        if self.is_alert_active():
-            badge = "[ALERT]"
-
-        return {
-            "badge": badge,
-            "wifi": f"WIFI:{self.wifi_status}",
-            "demo": "[DEMO]" if self.demo_mode else "",
-            "weight_display": f"{round(self.net_weight_g, 1)} g",
-            "stable_indicator": "[STBL]" if self.is_stable else "[UNST]",
-            "countdown_text": f"Next reminder: {self.get_countdown_seconds()}s",
-            "progress_text": f"Intake: {round(self.consumed_today_ml)}/{round(self.daily_goal_ml)} ml ({round(self.get_progress_pct())}%)",
-        }
-
     def get_led_state(self) -> Dict[str, Any]:
-        """Returns the simulated LED state and duty cycle."""
-        if self.is_alert_active():
-            # Sinusoidal breathing pulse
+        """Returns the simulated 16-LED WS2812B ring state matching LedRing priority."""
+        # Priority 1: Active one-shot animations (RAINBOW_GOAL overrides RIPPLE_DRINK)
+        if self.last_goal_reached_ms is not None:
+            elapsed_goal = self.current_time_ms - self.last_goal_reached_ms
+            if 0 <= elapsed_goal < 3000:
+                return {
+                    "mode": "RAINBOW_GOAL",
+                    "color": "RAINBOW",
+                    "active_leds": 16,
+                    "brightness": 80,
+                    "is_alert": False,
+                }
+
+        if self.last_drink_logged_ms is not None:
+            elapsed_drink = self.current_time_ms - self.last_drink_logged_ms
+            if 0 <= elapsed_drink < 1000:
+                # Overridden if a refill occurred more recently
+                if self.last_refill_ms is None or self.last_drink_logged_ms >= self.last_refill_ms:
+                    return {
+                        "mode": "RIPPLE_DRINK",
+                        "color": "GREEN",
+                        "active_leds": 16,
+                        "brightness": 80,
+                        "is_alert": False,
+                    }
+
+        if self.last_refill_ms is not None:
+            elapsed_refill = self.current_time_ms - self.last_refill_ms
+            if 0 <= elapsed_refill < 1000:
+                return {
+                    "mode": "RIPPLE_REFILL",
+                    "color": "BLUE_CYAN",
+                    "active_leds": 16,
+                    "brightness": 80,
+                    "is_alert": False,
+                }
+
+        # Priority 2: Alert patterns (when no one-shot is active)
+        if self.alert_state == "ALERT_REPEAT":
+            period = 250 if self.demo_mode else 750
+            phase = self.current_time_ms % period
+            angle = math.pi * (phase / period)
+            s = math.sin(angle)
+            brightness = int(round((s * s) * 255.0))
+            return {
+                "mode": "ALERT_URGENT",
+                "color": "CORAL_RED",
+                "active_leds": 16,
+                "brightness": brightness,
+                "is_alert": True,
+            }
+
+        if self.alert_state == "ALERT_DUE":
             period = 500 if self.demo_mode else 1500
             phase = self.current_time_ms % period
-            angle = phase * (2.0 * math.pi / period)
-            norm = (math.sin(angle - math.pi / 2.0) + 1.0) * 0.5
-            duty = int(norm * norm * 255.0)
-            return {"mode": "BREATHING", "pattern": "BREATHING", "duty": duty, "is_alert": True}
-        elif self.cup_state in ("STABILIZING", "RETURN_STABILIZING"):
-            duty = 50 if (self.current_time_ms % 1000 < 100) else 0
-            return {"mode": "BLINK", "pattern": "BLINKING", "duty": duty, "is_alert": False}
+            angle = math.pi * (phase / period)
+            s = math.sin(angle)
+            brightness = int(round((s * s) * 255.0))
+            return {
+                "mode": "ALERT_BREATHING",
+                "color": "AMBER",
+                "active_leds": 16,
+                "brightness": brightness,
+                "is_alert": True,
+            }
+
+        # Priority 3: Intake arc preview (3000ms after CUP_PLACED or after drink/goal one-shot)
+        if self.cup_state == "CUP_PRESENT":
+            arc_active = False
+            if self.last_cup_placed_ms is not None and 0 <= (self.current_time_ms - self.last_cup_placed_ms) < 3000:
+                arc_active = True
+            elif self.last_goal_reached_ms is not None and 3000 <= (self.current_time_ms - self.last_goal_reached_ms) < 6000:
+                arc_active = True
+            elif self.last_drink_logged_ms is not None and 1000 <= (self.current_time_ms - self.last_drink_logged_ms) < 4000:
+                arc_active = True
+
+            if arc_active:
+                clamped_pct = min(100.0, max(0.0, self.get_progress_pct()))
+                active_leds = max(1, min(16, int((clamped_pct / 100.0) * 16.0 + 0.5)))
+                return {
+                    "mode": "INTAKE_ARC",
+                    "color": "CYAN_GREEN",
+                    "active_leds": active_leds,
+                    "brightness": 80,
+                    "is_alert": False,
+                }
+
+        # Priority 4: Resting / transitional states
+        if self.cup_state in ("STABILIZING", "RETURN_STABILIZING"):
+            return {
+                "mode": "SPINNER",
+                "color": "CYAN",
+                "active_leds": 3,
+                "brightness": 80,
+                "is_alert": False,
+            }
         elif self.cup_state == "CUP_PRESENT":
-            return {"mode": "STEADY_LOW", "pattern": "SOLID_LOW", "duty": 8, "is_alert": False}
+            return {
+                "mode": "AMBIENT_WARM",
+                "color": "WARM_WHITE",
+                "active_leds": 16,
+                "brightness": 28,
+                "is_alert": False,
+            }
         elif self.cup_state == "CUP_LIFTED":
-            return {"mode": "SOLID_MED", "pattern": "SOLID_MED", "duty": 38, "is_alert": False}
+            return {
+                "mode": "LIFTED_GLOW",
+                "color": "WARM_WHITE",
+                "active_leds": 16,
+                "brightness": 64,
+                "is_alert": False,
+            }
         else:
-            return {"mode": "OFF", "pattern": "OFF", "duty": 0, "is_alert": False}
+            return {
+                "mode": "OFF",
+                "color": "OFF",
+                "active_leds": 0,
+                "brightness": 0,
+                "is_alert": False,
+            }

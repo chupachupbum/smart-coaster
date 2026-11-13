@@ -1,8 +1,8 @@
 # Smart Cup Stand (ESP32-C3 & ESP32)
 
-Firmware, Wokwi hardware simulations, and a custom 2-layer KiCad 10 PCB for an ESP32-C3 / ESP32 hydration tracking coaster. Instead of Time-of-Flight (ToF) distance sensors that only detect whether a bottle was picked up, this system uses a 4-cell Wheatstone bridge load cell and HX711 24-bit ADC to measure beverage mass deltas. It separates real drinks from fidget lifts and refills while driving an SSD1306 OLED UI, PWM or WS2812 NeoPixel ring LED alerts, UART JSON telemetry, and `ntfy.sh` HTTP push notifications.
+Firmware, Wokwi hardware simulations, and a custom 2-layer KiCad 10 PCB for an ESP32-C3 / ESP32 hydration tracking coaster. Instead of Time-of-Flight (ToF) distance sensors that only detect whether a bottle was picked up, this system uses a 4-cell Wheatstone bridge load cell and HX711 24-bit ADC to measure beverage mass deltas. It separates real drinks from fidget lifts and refills while driving a 16-pixel WS2812B NeoPixel ring (`LedRing`), UART JSON telemetry, and `ntfy.sh` HTTP push notifications.
 
-![Hardware Schematic](./schematic.jpeg)
+![Hardware Schematic](./schematic_led_ring.jpeg)
 
 ## Architecture
 
@@ -11,21 +11,20 @@ The firmware separates hardware-independent hydration state machines from ESP32 
 - **Core Domain (`lib/coaster_domain/`)**: Pure C++17 state machine (`CupState`, `AlertState`) with zero `<Arduino.h>` dependencies for native host unit testing.
 - **Hardware Abstraction Layer (`src/hal/`)**:
   - `WeightSensor`: Non-blocking HX711 driver (`0.42` counts/g default calibration for Wokwi 5 kg load cell).
-  - `DisplayOled`: SSD1306 128x64 I2C display renderer (`0x3C`, 400 kHz Fast I2C) showing state badge, Wi-Fi status, live weight, countdown timer, and daily goal progress bar.
-  - `StatusLed`: Non-blocking 5 kHz, 8-bit LEDC PWM sinusoidal breathing and celebration flash engine.
+  - `LedRing`: 16-pixel WS2812B NeoPixel ring driver (`src/hal/led_ring.h` / `src/hal/led_ring.cpp`) on `GPIO 3` (ESP32-C3) / `GPIO 4` (ESP32), rendering intake progress arcs, drink/refill ripples, goal rainbows, stabilization spinners, warm ambient/lifted glows, and reminder/urgent alert patterns. Replaces the active SSD1306 I2C OLED and single PWM status LED (legacy `display_oled.*` and `status_led.*` remain unused in `src/hal/`).
 - **Telemetry & CLI (`src/telemetry/`)**: Single-line JSON event/heartbeat emitter and non-blocking UART0 command parser using fixed static buffers (zero heap allocation in steady state).
 - **Network Push (`src/net/`)**: Non-blocking Wi-Fi station manager with exponential backoff and bounded FIFO queue (`maxlen=3`, 2000 ms rate limit) dispatching HTTP POST notifications to `ntfy.sh`.
-- **Cooperative Scheduler (`src/main.cpp`)**: Rollover-safe multi-rate loop running UART RX polling (continuous), LED PWM (50 Hz), weight sampling + domain ticks (20 Hz), network dispatch (20 Hz), OLED rendering (10 Hz), and telemetry heartbeats (0.2 Hz).
+- **Cooperative Scheduler (`src/main.cpp`)**: Rollover-safe multi-rate loop running UART RX polling (continuous), 16-LED ring animations (50 Hz), weight sampling + domain ticks (20 Hz), network dispatch (20 Hz), and telemetry heartbeats (0.2 Hz).
 
 ```
 ├── platformio.ini                   # Build & test config (esp32-c3-devkitm-1, esp32dev, native)
-├── diagram.json                     # Default Wokwi schematic (OLED + PWM LED + HX711)
+├── diagram.json                     # Default Wokwi schematic (16-pixel WS2812B LED ring + HX711)
 ├── diagram_led_ring.json            # Wokwi schematic with 16-pixel WS2812 LED ring
 ├── diagram_round_coaster.json       # Wokwi circular coaster layout (16 radial NeoPixels)
 ├── wokwi.toml                       # Wokwi firmware binary linkage
-├── schematic.jpeg                   # Default hardware wiring diagram
-├── schematic_led_ring.jpeg          # 16-LED NeoPixel ring wiring diagram
+├── schematic_led_ring.jpeg          # 16-LED NeoPixel ring wiring diagram (default circuit)
 ├── schematic_round_coaster.jpeg     # Circular coaster discrete NeoPixel wiring diagram
+├── schematic.jpeg                   # Legacy OLED + PWM LED wiring diagram
 ├── docs/
 │   └── app-screens/                 # Companion mobile app UI prototypes (dashboard, alerts, analytics, config)
 ├── hardware/
@@ -42,7 +41,7 @@ The firmware separates hardware-independent hydration state machines from ESP32 
 │   └── coaster_domain/              # Pure C++ hydration domain state machine
 ├── src/
 │   ├── main.cpp                     # Multi-rate cooperative scheduler
-│   ├── hal/                         # HX711, SSD1306 OLED, and LEDC PWM drivers
+│   ├── hal/                         # HX711 and 16-pixel WS2812B LedRing drivers (plus unused legacy OLED/PWM files)
 │   ├── telemetry/                   # UART CLI & single-line JSON telemetry
 │   └── net/                         # Wi-Fi manager & ntfy.sh HTTP client
 └── test/
@@ -62,9 +61,9 @@ The firmware separates hardware-independent hydration state machines from ESP32 
 | **Valid Drink** | `Δ ≤ -15.0 g` | `Δ ≤ -15.0 g` | Logs `baseline - returned` (g ≈ ml) to daily intake, clears alerts, resets timer |
 | **Lift Without Drink** | `-15.0 g < Δ < +30.0 g` | `-15.0 g < Δ < +30.0 g` | Updates baseline to track condensation/drift without logging intake or resetting timer |
 | **Refill Detection** | `Δ ≥ +30.0 g` | `Δ ≥ +30.0 g` | Updates baseline to new heavier weight; does not log intake or reset timer |
-| **Primary Reminder** | 45 minutes | 45 seconds | Enters `ALERT_DUE`, pulses status LED, shows `[ALERT]`, dispatches push notification |
-| **Repeat Reminder** | Every 5 minutes | Every 5 seconds | Enters `ALERT_REPEAT`, re-notifies every interval until a valid drink is logged |
-| **Daily Goal** | 2000 ml (default) | 2000 ml (default) | Configurable `100..10000 ml`; triggers celebration LED & push notification at 100% |
+| **Primary Reminder** | 45 minutes | 45 seconds | Enters `ALERT_DUE`, triggers `ALERT_BREATHING` on the 16-LED ring, dispatches push notification |
+| **Repeat Reminder** | Every 5 minutes | Every 5 seconds | Enters `ALERT_REPEAT`, triggers `ALERT_URGENT` strobe on the 16-LED ring, re-notifies every interval until a valid drink is logged |
+| **Daily Goal** | 2000 ml (default) | 2000 ml (default) | Configurable `100..10000 ml`; triggers `RAINBOW_GOAL` celebration sweep & push notification at 100% |
 
 ## Hardware Pinout
 
@@ -77,9 +76,7 @@ The firmware supports two board targets configured in `platformio.ini` and `incl
 | :--- | :--- | :--- | :--- | :--- |
 | **HX711 Load Cell Amp** | `DT` (DOUT) | `GPIO 6` (J3-9) | `GPIO 18` | 24-bit ADC serial data input |
 | **HX711 Load Cell Amp** | `SCK` (PD_SCK) | `GPIO 7` (J3-8) | `GPIO 19` | 24-bit ADC serial clock output |
-| **SSD1306 OLED (128x64)** | `SDA` | `GPIO 4` (J3-11) | `GPIO 21` | I2C Data (`0x3C`) |
-| **SSD1306 OLED (128x64)** | `SCL` | `GPIO 5` (J3-10) | `GPIO 22` | I2C Clock (400 kHz Fast Mode) |
-| **Status Alert LED / Ring** | `PWM` / `DIN` | `GPIO 3` (J1-5) | `GPIO 4` | Via series resistor to status LED or WS2812 `DIN` |
+| **WS2812B 16-LED Ring** | `DIN` | `GPIO 3` (J1-5) | `GPIO 4` | Via 330 Ω series resistor to 16-pixel NeoPixel ring `DIN` |
 | **UART0 Console** | `TX` / `RX` | `GPIO 21` / `GPIO 20` | `GPIO 1` / `GPIO 3` | 115200 8N1 interactive CLI & JSON telemetry stream |
 
 ### 4-Cell Load Cell Wheatstone Bridge Wiring
@@ -89,14 +86,13 @@ Four 3-wire (50 kg) half-bridge load cells form a full Wheatstone bridge into th
 - **Bottom-Left (`A+`) & Top-Right (`A-`)**: Center signal wires connect to `A+` and `A-` differential sense pins.
 - **Outer Loop**: Outer red/black half-bridge leads pair with adjacent corners as shown in `schematic.jpeg` so compression on all four feet sums constructively.
 
-### Alternative Wokwi Topologies
+### Wokwi Simulation Topologies
 
-In addition to `diagram.json`, the repository provides two NeoPixel ring simulation layouts:
+The default `diagram.json` uses the 16-pixel WS2812B LED ring topology; an alternate discrete-LED layout is also included:
 
 | Layout | Wokwi Diagram | Schematic | Description |
 | :--- | :--- | :--- | :--- |
-| **OLED + Status LED** | `diagram.json` | `schematic.jpeg` | SSD1306 128x64 I2C OLED + PWM status LED + HX711 |
-| **16-LED Ring Module** | `diagram_led_ring.json` | `schematic_led_ring.jpeg` | `wokwi-led-ring` (16 pixels on `GPIO 3` via 330 Ω resistor) + HX711 |
+| **16-LED Ring (Default)** | `diagram.json` / `diagram_led_ring.json` | `schematic_led_ring.jpeg` | `wokwi-led-ring` (16 pixels on `GPIO 3` via 330 Ω resistor) + HX711 |
 | **Circular Coaster** | `diagram_round_coaster.json` | `schematic_round_coaster.jpeg` | 16 discrete radially-arranged WS2812 pixels (`led0..led15`) + HX711 |
 
 ## Custom PCB & JLCPCB Manufacturing (`hardware/smart_cup_stand_pcb/`)
@@ -160,7 +156,7 @@ pio run -e esp32-c3-devkitm-1 -t upload -t monitor
 
 1. Install the **Wokwi Simulator** extension for VS Code (or Wokwi CLI).
 2. Build the firmware first (`pio run -e esp32-c3-devkitm-1`).
-3. Open `diagram.json` (or `diagram_led_ring.json` / `diagram_round_coaster.json`) and start the simulation. Use the HX711 weight slider to simulate placing a cup (`> 30 g`), lifting (`< 20 g`), drinking (`≥ 15 g` lighter), and refilling (`≥ 30 g` heavier).
+3. Open `diagram.json` (or `diagram_round_coaster.json`) and start the simulation. Use the HX711 weight slider to simulate placing a cup (`> 30 g`), lifting (`< 20 g`), drinking (`≥ 15 g` lighter), and refilling (`≥ 30 g` heavier).
 
 ## UART CLI & Telemetry Protocol
 

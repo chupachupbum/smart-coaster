@@ -8,7 +8,7 @@
  * - Section 3: Negative Weight Offset & Calibration Recovery
  * - Section 4: Dynamic Goal Mutation & Multi-Event Burst Overwrite
  * - Section 5: TelemetryConsole UART CLI Fuzzing & JSON Grammar Conformance
- * - Section 6: StatusLed Sinusoidal Gamma Math & Timing Rollover Safety
+ * - Section 6: LedRing Breathing Math, Intake Arc Mapping, Chaining & Rollover Safety
  * - Section 7: NetworkPush Ring Buffer Overflow & Rate-Limiter Throttling
  */
 
@@ -19,13 +19,15 @@
 #include <cmath>
 #include <cstring>
 #include <sstream>
+#include <limits>
 
 #include "pins_config.h"
 #include "config.h"
 #include "coaster_domain.h"
-#include "hal/status_led.h"
+#include "hal/led_ring.h"
 #include "telemetry/telemetry_console.h"
 #include "net/network_push.h"
+#include "net/wifi_portal.h"
 
 // ============================================================================
 // Simple Mock Stream for UART I/O Testing
@@ -338,31 +340,90 @@ void test_uart_cli_fuzzing() {
 }
 
 // ============================================================================
-// Test 6: StatusLed Sinusoidal Gamma Math & Rollover
+// Test 6: LedRing Breathing Math, Intake Arc, Chaining & Rollover Safety
 // ============================================================================
 
-void test_status_led_math_and_rollover() {
-    std::cout << "[TEST 6] StatusLed PWM Gamma Math & Rollover..." << std::endl;
+void test_led_ring_math_chaining_and_rollover() {
+    std::cout << "[TEST 6] LedRing Breathing Math, Intake Arc, Chaining & Rollover..." << std::endl;
 
-    // Check breathing curve duty cycle bounds: must span [0, 255]
-    uint8_t min_duty = 255;
-    uint8_t max_duty = 0;
-    for (uint32_t t = 0; t <= 1500; t += 20) {
-        uint8_t duty = StatusLed::computeBreathingDuty(t, 1500);
-        if (duty < min_duty) min_duty = duty;
-        if (duty > max_duty) max_duty = duty;
+    // 1. Check breathing curve intensity bounds: must span [0, 255]
+    uint8_t min_intensity = 255;
+    uint8_t max_intensity = 0;
+    for (uint32_t t = 0; t <= 1500; t += 10) {
+        uint8_t val = LedRing::computeBreathingIntensity(t, 1500);
+        if (val < min_intensity) min_intensity = val;
+        if (val > max_intensity) max_intensity = val;
     }
-    assert(min_duty == 0);
-    assert(max_duty == 255);
+    assert(min_intensity == 0);
+    assert(max_intensity == 255);
+    assert(LedRing::computeBreathingIntensity(100, 0) == 0);
 
-    // Verify 32-bit timestamp rollover safety in breathing math
-    uint32_t rollover_time = 0xFFFFFFFFUL - 750UL; // halfway through cycle before rollover
-    uint8_t duty_before = StatusLed::computeBreathingDuty(rollover_time, 1500);
-    uint8_t duty_after  = StatusLed::computeBreathingDuty(rollover_time + 1000, 1500);
-    assert(duty_before <= 255);
-    assert(duty_after <= 255);
+    // 2. Verify computeIntakeArcPixels boundary mapping on 16-LED ring
+    assert(LedRing::computeIntakeArcPixels(0.0f, 16) == 1);
+    assert(LedRing::computeIntakeArcPixels(-25.0f, 16) == 1);
+    assert(LedRing::computeIntakeArcPixels(std::numeric_limits<float>::quiet_NaN(), 16) == 1);
+    assert(LedRing::computeIntakeArcPixels(50.0f, 16) == 8);
+    assert(LedRing::computeIntakeArcPixels(100.0f, 16) == 16);
+    assert(LedRing::computeIntakeArcPixels(250.0f, 16) == 16);
+    assert(LedRing::computeIntakeArcPixels(50.0f, 0) == 0);
 
-    std::cout << "  -> Passed: Sinusoidal breathing duty spans [0, 255] and handles 32-bit rollover.\n";
+    // 3. Verify one-shot chaining, goal override, and priority rules
+    LedRing ring(PIN_LED_RING, LED_RING_PIXEL_COUNT, LED_RING_MAX_BRIGHTNESS);
+    ring.begin(PIN_LED_RING);
+
+    // Same-tick GOAL_REACHED + DRINK_LOGGED: RAINBOW_GOAL must win regardless of call order
+    uint32_t t0 = 10000;
+    ring.triggerGoalReached(t0, 100.0f);
+    ring.triggerDrinkLogged(t0, 100.0f);
+    ring.update(t0 + 500, CupState::CUP_PRESENT, AlertState::IDLE, 100.0f);
+    assert(ring.getMode() == LedRingMode::RAINBOW_GOAL);
+    assert(ring.getActiveLedCount() == 16);
+
+    // After 3000ms rainbow -> chains into 3000ms INTAKE_ARC (16 LEDs) -> AMBIENT_WARM
+    ring.update(t0 + 3200, CupState::CUP_PRESENT, AlertState::IDLE, 100.0f);
+    assert(ring.getMode() == LedRingMode::INTAKE_ARC);
+    assert(ring.getActiveLedCount() == 16);
+    ring.update(t0 + 6200, CupState::CUP_PRESENT, AlertState::IDLE, 100.0f);
+    assert(ring.getMode() == LedRingMode::AMBIENT_WARM);
+
+    // Drink ripple (1000ms) -> chains into INTAKE_ARC (3000ms) -> cleared if cup lifted
+    ring.triggerDrinkLogged(20000, 50.0f);
+    ring.update(20500, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::RIPPLE_DRINK);
+    ring.update(21500, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::INTAKE_ARC);
+    assert(ring.getActiveLedCount() == 8);
+    // Lifting cup clears arc_preview_active_
+    ring.update(21600, CupState::CUP_LIFTED, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::LIFTED_GLOW);
+    ring.update(21700, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::AMBIENT_WARM);
+
+    // 4. Verify 32-bit timestamp rollover safety in animations and breathing math
+    uint32_t rollover_time = 0xFFFFFFFFUL - 400UL;
+    uint8_t breath_before = LedRing::computeBreathingIntensity(rollover_time, 1500);
+    uint8_t breath_after  = LedRing::computeBreathingIntensity(rollover_time + 1000, 1500);
+    assert(breath_before <= 255);
+    assert(breath_after <= 255);
+
+    ring.triggerDrinkLogged(rollover_time, 50.0f);
+    ring.update(rollover_time + 200UL, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::RIPPLE_DRINK);
+
+    // Across 0xFFFFFFFF (+600ms total < 1000ms)
+    ring.update(rollover_time + 600UL, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::RIPPLE_DRINK);
+
+    // Past 1000ms (+1200ms) -> chained cleanly into INTAKE_ARC across rollover
+    ring.update(rollover_time + 1200UL, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::INTAKE_ARC);
+    assert(ring.getActiveLedCount() == 8);
+
+    // Past 4000ms (+4200ms) -> expired cleanly to AMBIENT_WARM
+    ring.update(rollover_time + 4200UL, CupState::CUP_PRESENT, AlertState::IDLE, 50.0f);
+    assert(ring.getMode() == LedRingMode::AMBIENT_WARM);
+
+    std::cout << "  -> Passed: LedRing breathing, arc mapping, chaining, and 32-bit rollover verified.\n";
 }
 
 // ============================================================================
@@ -419,6 +480,91 @@ void test_network_push_overflow_and_rate_limit() {
 }
 
 // ============================================================================
+// Test 8: Wi-Fi Portal REST & UART CLI Adversarial Hardening
+// ============================================================================
+
+void test_wifi_portal_and_uart_adversarial() {
+    std::cout << "[TEST 8] Wi-Fi Portal REST & UART CLI Adversarial Hardening..." << std::endl;
+    CoasterDomain domain(2000.0f);
+    NetworkPush net;
+    net.begin("AdvSSID", "AdvPass", "adv-topic");
+    LedRing ring(PIN_LED_RING, LED_RING_PIXEL_COUNT, LED_RING_MAX_BRIGHTNESS);
+    ring.begin();
+    WifiPortal portal(domain, net, ring);
+    TelemetryConsole console;
+    console.begin();
+    console.setNetworkPush(&net);
+
+    char out_buf[2048];
+
+    // 1. Portal boundary guards: null arguments & buffer bounds
+    assert(portal.handleRequest(nullptr, "/", "", out_buf, sizeof(out_buf), 1000) == 400);
+    assert(portal.handleRequest("GET", nullptr, "", out_buf, sizeof(out_buf), 1000) == 400);
+    assert(portal.handleRequest("GET", "/", "", nullptr, 100, 1000) == 400);
+    assert(portal.handleRequest("GET", "/", "", out_buf, 0, 1000) == 400);
+
+    // 2. HTTP method fuzzing & unknown routes
+    const char* unsupported_verbs[] = {"PUT", "DELETE", "PATCH", "HEAD", "TRACE"};
+    for (const char* verb : unsupported_verbs) {
+        int code = portal.handleRequest(verb, "/api/status", "", out_buf, sizeof(out_buf), 1000);
+        assert(code == 405);
+    }
+    const char* traversal_paths[] = {"/../secret", "/etc/passwd", "/api/unknown", "/admin", "/.env"};
+    for (const char* p : traversal_paths) {
+        int code = portal.handleRequest("GET", p, "", out_buf, sizeof(out_buf), 1000);
+        assert(code == 404);
+    }
+
+    // 3. Connect endpoint payload fuzzing
+    // Malformed JSON (missing colon, unclosed brackets, binary bytes)
+    assert(portal.handleRequest("POST", "/api/wifi/connect", "{ssid", out_buf, sizeof(out_buf), 1000) == 400);
+    assert(portal.handleRequest("POST", "/api/wifi/connect", "{\"ssid\":}", out_buf, sizeof(out_buf), 1000) == 400);
+    assert(portal.handleRequest("POST", "/api/wifi/connect", "\x01\x02\x03", out_buf, sizeof(out_buf), 1000) == 400);
+
+    // URL encoded malformed escapes
+    std::string bad_url = "ssid=Test%ZZ&password=pass%2";
+    int code = portal.handleRequest("POST", "/api/wifi/connect", bad_url.c_str(), out_buf, sizeof(out_buf), 1000);
+    assert(code == 200); // Decodes gracefully without crash
+
+    // 4. UART CLI Wi-Fi command fuzzing
+    FuzzStream stream;
+    // Unclosed quote in WIFI SET
+    stream.feed("WIFI SET \"UnclosedQuote mypass\r\n");
+    console.processUart(stream, domain, 1000);
+    assert(stream.tx_lines.size() == 1);
+    assert(is_valid_simple_json(stream.tx_lines[0]));
+
+    // Empty quote in WIFI SET
+    stream.clear();
+    stream.feed("WIFI SET \"\" pass\r\n");
+    console.processUart(stream, domain, 1000);
+    assert(stream.tx_lines.size() == 1);
+    assert(is_valid_simple_json(stream.tx_lines[0]));
+    assert(stream.tx_lines[0].find("\"status\":\"ERROR\"") != std::string::npos);
+
+    // Invalid Wi-Fi subcommands
+    stream.clear();
+    stream.feed("WIFI BOGUS_SUBCOMMAND\r\n");
+    console.processUart(stream, domain, 1000);
+    assert(stream.tx_lines.size() == 1);
+    assert(is_valid_simple_json(stream.tx_lines[0]));
+    assert(stream.tx_lines[0].find("\"status\":\"ERROR\"") != std::string::npos);
+
+    // Multiple rapid UART WIFI commands in one buffer chunk
+    stream.clear();
+    stream.feed("WIFI STATUS\r\nWIFI SCAN\r\nWIFI AP\r\nWIFI FORGET\r\n");
+    while (stream.available() > 0) {
+        console.processUart(stream, domain, 1000);
+    }
+    assert(stream.tx_lines.size() == 4);
+    for (const auto& line : stream.tx_lines) {
+        assert(is_valid_simple_json(line));
+    }
+
+    std::cout << "  -> Passed: Wi-Fi Portal REST & UART CLI withstood boundary violations, fuzzing, and unclosed quotes.\n";
+}
+
+// ============================================================================
 // Main Runner
 // ============================================================================
 
@@ -432,11 +578,12 @@ int main() {
     test_negative_weight_handling();
     test_dynamic_goal_and_bursts();
     test_uart_cli_fuzzing();
-    test_status_led_math_and_rollover();
+    test_led_ring_math_chaining_and_rollover();
     test_network_push_overflow_and_rate_limit();
+    test_wifi_portal_and_uart_adversarial();
 
     std::cout << "======================================================================\n";
-    std::cout << "SUCCESS: All 7 Deep Empirical Adversarial Hardening Tests PASSED!\n";
+    std::cout << "SUCCESS: All 8 Deep Empirical Adversarial Hardening Tests PASSED!\n";
     std::cout << "======================================================================\n";
     return 0;
 }

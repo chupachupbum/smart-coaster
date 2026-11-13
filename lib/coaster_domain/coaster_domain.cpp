@@ -18,6 +18,14 @@ CoasterDomain::CoasterDomain(float daily_goal_ml) {
     status_.is_stable = false;
     status_.alert_active = false;
     status_.demo_mode = false;
+    tap_active_ = false;
+    tap_start_ms_ = 0;
+    tap_peak_g_ = 0.0f;
+    tap_count_ = 0;
+    wifi_ap_trigger_pending_ = false;
+    for (size_t i = 0; i < TAP_REQUIRED_COUNT; ++i) {
+        tap_times_[i] = 0;
+    }
 }
 
 void CoasterDomain::update(float raw_weight_g, uint32_t now_ms) {
@@ -30,6 +38,7 @@ void CoasterDomain::update(float raw_weight_g, uint32_t now_ms) {
 
     tick_state_machine(now_ms);
     tick_reminder_timers(now_ms);
+    evaluate_tap_gesture(now_ms, status_.net_weight_g);
 }
 
 void CoasterDomain::record_stability_sample(uint32_t now_ms, float net_weight) {
@@ -271,6 +280,13 @@ void CoasterDomain::reset() {
     status_.countdown_s = get_reminder_interval_ms() / 1000;
     status_.reminder_remaining_ms = get_reminder_interval_ms();
 
+    tap_active_ = false;
+    tap_count_ = 0;
+    wifi_ap_trigger_pending_ = false;
+    for (size_t i = 0; i < TAP_REQUIRED_COUNT; ++i) {
+        tap_times_[i] = 0;
+    }
+
     if (status_.net_weight_g < CUP_LIFT_MAX_G) {
         status_.cup_state = CupState::EMPTY;
         status_.alert_state = AlertState::IDLE;
@@ -298,6 +314,54 @@ void CoasterDomain::set_demo_mode(bool enable) {
     if (!session_active_ || status_.cup_state == CupState::EMPTY) {
         status_.countdown_s = get_reminder_interval_ms() / 1000;
         status_.reminder_remaining_ms = get_reminder_interval_ms();
+    }
+}
+
+bool CoasterDomain::consume_wifi_ap_trigger() {
+    bool pending = wifi_ap_trigger_pending_;
+    wifi_ap_trigger_pending_ = false;
+    return pending;
+}
+
+void CoasterDomain::evaluate_tap_gesture(uint32_t now_ms, float net_w) {
+    if (status_.cup_state == CupState::CUP_PRESENT ||
+        status_.cup_state == CupState::CUP_LIFTED ||
+        status_.cup_state == CupState::RETURN_STABILIZING) {
+        tap_active_ = false;
+        tap_count_ = 0;
+        return;
+    }
+
+    if (!tap_active_) {
+        if (net_w > CUP_PRESENCE_MIN_G) {
+            tap_active_ = true;
+            tap_start_ms_ = now_ms;
+            tap_peak_g_ = net_w;
+        }
+    } else {
+        if (net_w > tap_peak_g_) {
+            tap_peak_g_ = net_w;
+        }
+        if (net_w <= CUP_PRESENCE_MIN_G) {
+            uint32_t dur = now_ms - tap_start_ms_;
+            tap_active_ = false;
+            if (dur >= TAP_MIN_DURATION_MS && dur <= TAP_MAX_DURATION_MS && tap_peak_g_ >= TAP_MIN_WEIGHT_G) {
+                size_t valid = 0;
+                for (size_t i = 0; i < tap_count_; ++i) {
+                    if ((now_ms - tap_times_[i]) <= TAP_WINDOW_MS) {
+                        tap_times_[valid++] = tap_times_[i];
+                    }
+                }
+                tap_count_ = valid;
+                if (tap_count_ < TAP_REQUIRED_COUNT) {
+                    tap_times_[tap_count_++] = now_ms;
+                }
+                if (tap_count_ >= TAP_REQUIRED_COUNT) {
+                    wifi_ap_trigger_pending_ = true;
+                    tap_count_ = 0;
+                }
+            }
+        }
     }
 }
 

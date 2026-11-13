@@ -180,11 +180,14 @@ class TestT4RealWorldScenarios:
         harness.advance_time(duration_ms=2705 * 1000, step_ms=5000)
         assert harness.telemetry["alert"] is True
         assert harness.led["is_alert"] is True
+        assert harness.led["mode"] == "ALERT_BREATHING"
         assert_event(harness.events, "REMINDER_ALERT")
         assert_notification_sent(harness.notifications, "Hydration Alert", priority=4)
 
         # 5 minutes later -> Repeat 1
         harness.advance_time(duration_ms=305 * 1000, step_ms=5000)
+        assert harness.led["mode"] == "ALERT_URGENT"
+        assert harness.led["is_alert"] is True
         assert_event(harness.events, "REPEAT_ALERT")
 
         # 5 minutes later -> Repeat 2
@@ -196,6 +199,7 @@ class TestT4RealWorldScenarios:
         harness.take_drink(sip_ml=180.0, duration_ms=2000)
         assert harness.telemetry["alert"] is False
         assert harness.led["is_alert"] is False
+        assert harness.led["mode"] == "RIPPLE_DRINK"
         assert_consumed_ml(harness.telemetry, 180.0)
         assert 2690 <= harness.telemetry["countdown_s"] <= 2700
 

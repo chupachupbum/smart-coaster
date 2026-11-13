@@ -25,10 +25,6 @@ class E2ETestHarness:
         return self.adapter.get_notifications()
 
     @property
-    def display(self) -> Dict[str, Any]:
-        return self.adapter.get_display()
-
-    @property
     def led(self) -> Dict[str, Any]:
         return self.adapter.get_led()
 

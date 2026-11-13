@@ -4,6 +4,7 @@
  */
 
 #include "telemetry_console.h"
+#include "net/network_push.h"
 #include <cstdio>
 #include <cstring>
 #include <cctype>
@@ -15,7 +16,9 @@ TelemetryConsole::TelemetryConsole(uint32_t heartbeat_interval_ms)
       last_was_cr_(false),
       last_telemetry_ms_(0),
       heartbeat_interval_ms_(heartbeat_interval_ms),
-      wifi_status_("DISCONNECTED") {
+      wifi_status_("DISCONNECTED"),
+      server_status_("UNKNOWN"),
+      network_(nullptr) {
     resetRx();
 }
 
@@ -166,7 +169,7 @@ size_t TelemetryConsole::executeCommand(const char* cmd_line, CoasterDomain& dom
         return snprintf(out_buf, max_out_len,
             "{\"type\":\"response\",\"ts\":%lu,\"state\":\"%s\",\"weight_g\":%.1f,\"stable_g\":%.1f,"
             "\"stable\":%s,\"consumed_ml\":%.1f,\"goal_ml\":%.1f,\"progress_pct\":%.1f,"
-            "\"countdown_s\":%lu,\"alert\":%s,\"demo\":%s,\"wifi\":\"%s\",\"event\":\"STATUS\"}",
+            "\"countdown_s\":%lu,\"alert\":%s,\"demo\":%s,\"wifi\":\"%s\",\"server_status\":\"%s\",\"event\":\"STATUS\"}",
             (unsigned long)now_ms,
             CoasterDomain::cup_state_to_string(st.cup_state),
             st.net_weight_g,
@@ -178,12 +181,179 @@ size_t TelemetryConsole::executeCommand(const char* cmd_line, CoasterDomain& dom
             (unsigned long)st.countdown_s,
             st.alert_active ? "true" : "false",
             st.demo_mode ? "true" : "false",
-            wifi_status_);
+            wifi_status_,
+            server_status_);
     }
 
-    // 8. Unknown command fallback
+    // 8. WIFI STATUS
+    if (strcmp(cmd_upper, "WIFI STATUS") == 0) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        char ip_buf[20];
+        network_->getIpString(ip_buf, sizeof(ip_buf));
+        return snprintf(out_buf, max_out_len,
+            "{\"status\":\"OK\",\"command\":\"WIFI STATUS\",\"wifi\":\"%s\",\"ssid\":\"%s\",\"ip\":\"%s\","
+            "\"ap_active\":%s,\"server_status\":\"%s\",\"last_error\":\"%s\",\"failed_ssid\":\"%s\","
+            "\"queue_size\":%lu,\"post_ok\":%lu,\"post_fail\":%lu}",
+            network_->getWifiStateStr(),
+            network_->getSsid(),
+            ip_buf,
+            network_->isApActive() ? "true" : "false",
+            network_->getServerReachabilityStr(),
+            network_->getLastErrorStr(),
+            network_->getFailedSsid(),
+            (unsigned long)network_->getQueueSize(),
+            (unsigned long)network_->getSuccessfulPostCount(),
+            (unsigned long)network_->getFailedPostCount());
+    }
+
+    // 9. WIFI SCAN
+    if (strcmp(cmd_upper, "WIFI SCAN") == 0) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        network_->startAsyncScan(now_ms);
+        size_t count = network_->getScanCount();
+        const WifiScanEntry* entries = network_->getScanResults();
+        int written = snprintf(out_buf, max_out_len,
+            "{\"status\":\"OK\",\"command\":\"WIFI SCAN\",\"scanning\":%s,\"count\":%lu,\"networks\":[",
+            network_->isScanning() ? "true" : "false",
+            (unsigned long)count);
+        if (written > 0 && (size_t)written < max_out_len) {
+            size_t offset = (size_t)written;
+            for (size_t i = 0; i < count; ++i) {
+                char entry_buf[96];
+                int elen = snprintf(entry_buf, sizeof(entry_buf),
+                    "%s{\"ssid\":\"%s\",\"rssi\":%ld,\"channel\":%u,\"open\":%s}",
+                    (i > 0 ? "," : ""),
+                    entries[i].ssid,
+                    (long)entries[i].rssi,
+                    (unsigned int)entries[i].channel,
+                    entries[i].auth_open ? "true" : "false");
+                if (elen > 0 && offset + (size_t)elen + 3 < max_out_len) {
+                    memcpy(out_buf + offset, entry_buf, elen);
+                    offset += elen;
+                } else {
+                    break;
+                }
+            }
+            if (offset + 2 < max_out_len) {
+                out_buf[offset++] = ']';
+                out_buf[offset++] = '}';
+                out_buf[offset] = '\0';
+                return offset;
+            }
+        }
+        return (written > 0) ? (size_t)written : 0;
+    }
+
+    // 10. WIFI SET <ssid> [password]
+    if (strncmp(cmd_upper, "WIFI SET", 8) == 0 && (cmd_upper[8] == ' ' || cmd_upper[8] == '\t' || cmd_upper[8] == '\0')) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        const char* p = clean_cmd + 8;
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (*p == '\0') {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI SET\",\"msg\":\"Missing SSID\"}");
+        }
+
+        char ssid_parsed[33];
+        char pass_parsed[65];
+        ssid_parsed[0] = '\0';
+        pass_parsed[0] = '\0';
+
+        if (*p == '"' || *p == '\'') {
+            char q = *p++;
+            size_t idx = 0;
+            while (*p != '\0' && *p != q && idx < sizeof(ssid_parsed) - 1) {
+                ssid_parsed[idx++] = *p++;
+            }
+            ssid_parsed[idx] = '\0';
+            if (*p == q) p++;
+        } else {
+            size_t idx = 0;
+            while (*p != '\0' && *p != ' ' && *p != '\t' && idx < sizeof(ssid_parsed) - 1) {
+                ssid_parsed[idx++] = *p++;
+            }
+            ssid_parsed[idx] = '\0';
+        }
+
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (*p != '\0') {
+            if (*p == '"' || *p == '\'') {
+                char q = *p++;
+                size_t idx = 0;
+                while (*p != '\0' && *p != q && idx < sizeof(pass_parsed) - 1) {
+                    pass_parsed[idx++] = *p++;
+                }
+                pass_parsed[idx] = '\0';
+                if (*p == q) p++;
+            } else {
+                size_t idx = 0;
+                while (*p != '\0' && *p != ' ' && *p != '\t' && idx < sizeof(pass_parsed) - 1) {
+                    pass_parsed[idx++] = *p++;
+                }
+                pass_parsed[idx] = '\0';
+            }
+        }
+
+        size_t s_len = strlen(ssid_parsed);
+        size_t p_len = strlen(pass_parsed);
+        if (s_len == 0 || s_len > 32 || p_len > 64) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI SET\",\"msg\":\"Invalid SSID or password length\"}");
+        }
+
+        network_->requestWifiSwitch(ssid_parsed, pass_parsed, now_ms);
+        return snprintf(out_buf, max_out_len,
+            "{\"status\":\"OK\",\"command\":\"WIFI SET\",\"ssid\":\"%s\",\"switching\":true}",
+            ssid_parsed);
+    }
+
+    // 11. WIFI AP
+    if (strcmp(cmd_upper, "WIFI AP") == 0) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        network_->startApFallback(now_ms);
+        return snprintf(out_buf, max_out_len,
+            "{\"status\":\"OK\",\"command\":\"WIFI AP\",\"ap_active\":true,\"ap_ssid\":\"%s\"}",
+            WIFI_AP_SSID);
+    }
+
+    // 12. WIFI FORGET
+    if (strcmp(cmd_upper, "WIFI FORGET") == 0) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        network_->forgetCredentials(now_ms);
+        return snprintf(out_buf, max_out_len,
+            "{\"status\":\"OK\",\"command\":\"WIFI FORGET\",\"ap_active\":true}");
+    }
+
+    // 13. Other WIFI subcommands
+    if (strncmp(cmd_upper, "WIFI", 4) == 0 && (cmd_upper[4] == ' ' || cmd_upper[4] == '\t' || cmd_upper[4] == '\0')) {
+        if (!network_) {
+            return snprintf(out_buf, max_out_len,
+                "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Network manager unavailable\"}");
+        }
+        return snprintf(out_buf, max_out_len,
+            "{\"status\":\"ERROR\",\"command\":\"WIFI\",\"msg\":\"Supported: WIFI STATUS, WIFI SCAN, WIFI SET <ssid> [pass], WIFI AP, WIFI FORGET\"}");
+    }
+
+    // 14. Unknown command fallback
     return snprintf(out_buf, max_out_len,
-        "{\"status\":\"ERROR\",\"command\":\"%s\",\"msg\":\"Supported: DEMO ON|OFF, TARE, RESET, GOAL <ml>, STATUS\",\"usage\":\"DEMO ON|OFF, TARE, RESET, GOAL <ml>, STATUS\"}",
+        "{\"status\":\"ERROR\",\"command\":\"%s\",\"msg\":\"Supported: DEMO ON|OFF, TARE, RESET, GOAL <ml>, STATUS, WIFI\",\"usage\":\"DEMO ON|OFF, TARE, RESET, GOAL <ml>, STATUS, WIFI\"}",
         clean_cmd);
 }
 

@@ -11,13 +11,16 @@
 // ============================================================================
 
 // Reference Constants for Classic ESP32 (ESP32-D0WD-V3) Safe Profile
-#define ESP32_CLASSIC_PIN_OLED_SDA    21    // Standard ESP32 Wire SDA
-#define ESP32_CLASSIC_PIN_OLED_SCL    22    // Standard ESP32 Wire SCL
+#define ESP32_CLASSIC_PIN_LED_RING    4     // Safe GPIO avoiding UART0 RX (3) & strap (2)
 #define ESP32_CLASSIC_PIN_HX711_DT    18    // Safe GPIO outside SPI flash 6..11
 #define ESP32_CLASSIC_PIN_HX711_SCK   19    // Safe GPIO outside SPI flash 6..11
-#define ESP32_CLASSIC_PIN_STATUS_LED  4     // Safe PWM GPIO avoiding UART0 RX (3) & strap (2)
 #define ESP32_CLASSIC_PIN_UART0_TX    1     // Hardware UART0 TX on ESP32
 #define ESP32_CLASSIC_PIN_UART0_RX    3     // Hardware UART0 RX on ESP32
+
+// Legacy Classic ESP32 Compatibility Aliases
+#define ESP32_CLASSIC_PIN_STATUS_LED  ESP32_CLASSIC_PIN_LED_RING
+#define ESP32_CLASSIC_PIN_OLED_SDA    21    // Standard ESP32 Wire SDA (legacy)
+#define ESP32_CLASSIC_PIN_OLED_SCL    22    // Standard ESP32 Wire SCL (legacy)
 
 #define ESP32_CLASSIC_FLASH_PIN_MIN   6     // Integrated SPI Flash SCK/SD0..SD3/CMD start
 #define ESP32_CLASSIC_FLASH_PIN_MAX   11    // Integrated SPI Flash SCK/SD0..SD3/CMD end
@@ -28,12 +31,8 @@
 #define BOARD_BANNER_NAME     "ESP32 SMART CUP STAND - SYSTEM INTEGRATION"
 #define BOARD_OLED_BADGE      "ESP32 Coaster"
 
-#ifndef PIN_OLED_SDA
-#define PIN_OLED_SDA          ESP32_CLASSIC_PIN_OLED_SDA
-#endif
-
-#ifndef PIN_OLED_SCL
-#define PIN_OLED_SCL          ESP32_CLASSIC_PIN_OLED_SCL
+#ifndef PIN_LED_RING
+#define PIN_LED_RING          ESP32_CLASSIC_PIN_LED_RING
 #endif
 
 #ifndef PIN_HX711_DT
@@ -44,8 +43,17 @@
 #define PIN_HX711_SCK         ESP32_CLASSIC_PIN_HX711_SCK
 #endif
 
+// Legacy Classic ESP32 Compatibility Aliases
 #ifndef PIN_STATUS_LED
-#define PIN_STATUS_LED        ESP32_CLASSIC_PIN_STATUS_LED
+#define PIN_STATUS_LED        PIN_LED_RING
+#endif
+
+#ifndef PIN_OLED_SDA
+#define PIN_OLED_SDA          ESP32_CLASSIC_PIN_OLED_SDA
+#endif
+
+#ifndef PIN_OLED_SCL
+#define PIN_OLED_SCL          ESP32_CLASSIC_PIN_OLED_SCL
 #endif
 
 #define PIN_UART0_TX          ESP32_CLASSIC_PIN_UART0_TX
@@ -57,15 +65,10 @@
 #define BOARD_BANNER_NAME     "ESP32-C3 SMART CUP STAND - SYSTEM INTEGRATION"
 #define BOARD_OLED_BADGE      "ESP32-C3 Coaster"
 
-// --- I2C OLED Display (SSD1306 128x64) ---
-// Uses dedicated safe GPIOs avoiding strapping pins 8 and 9.
-// Always call Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL) in firmware setup.
-#ifndef PIN_OLED_SDA
-#define PIN_OLED_SDA          4     // GPIO 4 (Header J3-11): I2C SDA
-#endif
-
-#ifndef PIN_OLED_SCL
-#define PIN_OLED_SCL          5     // GPIO 5 (Header J3-10): I2C SCL (400kHz)
+// --- WS2812B 16-Pixel NeoPixel LED Ring ---
+// Driven via 330 Ohm series data resistor; avoids strapping pins 2, 8, and 9.
+#ifndef PIN_LED_RING
+#define PIN_LED_RING          3     // GPIO 3 (Header J1-5): Non-strapping RMT/GPIO
 #endif
 
 // --- HX711 24-Bit ADC / Load Cell Interface ---
@@ -77,10 +80,17 @@
 #define PIN_HX711_SCK         7     // GPIO 7 (Header J3-8): Serial Clock to HX711
 #endif
 
-// --- Status Alert LED ---
-// Active-HIGH driving external LED via 220 Ohm current-limiting resistor to GND.
+// --- Legacy ESP32-C3 Compatibility Aliases ---
 #ifndef PIN_STATUS_LED
-#define PIN_STATUS_LED        3     // GPIO 3 (Header J1-5): Non-strapping PWM GPIO
+#define PIN_STATUS_LED        PIN_LED_RING
+#endif
+
+#ifndef PIN_OLED_SDA
+#define PIN_OLED_SDA          4     // Legacy I2C SDA alias
+#endif
+
+#ifndef PIN_OLED_SCL
+#define PIN_OLED_SCL          5     // Legacy I2C SCL alias
 #endif
 
 // --- Primary Hardware UART0 Console ---
@@ -89,6 +99,16 @@
 
 #endif // Board Profile Selection
 
+// --- WS2812B LED Ring Configuration ---
+#ifndef LED_RING_PIXEL_COUNT
+#define LED_RING_PIXEL_COUNT    16
+#endif
+
+#ifndef LED_RING_MAX_BRIGHTNESS
+#define LED_RING_MAX_BRIGHTNESS 80
+#endif
+
+// --- Legacy OLED & LEDC Constants (Kept for Unused Legacy Headers) ---
 #ifndef OLED_I2C_ADDR
 #define OLED_I2C_ADDR         0x3C  // Default I2C address for SSD1306 display
 #endif

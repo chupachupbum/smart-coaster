@@ -45,9 +45,12 @@ public:
 
 #include "coaster_domain.h"
 
+class CoasterDomain;
+class NetworkPush;
+
 class TelemetryConsole {
 public:
-    static constexpr size_t RX_BUFFER_SIZE = 64;
+    static constexpr size_t RX_BUFFER_SIZE = 128;
     static constexpr size_t TX_BUFFER_SIZE = 512;
     static constexpr size_t MAX_READS_PER_TICK = 64;
     static constexpr uint32_t DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
@@ -143,6 +146,18 @@ public:
     void setWifiStatus(const char* status_str) { wifi_status_ = status_str ? status_str : "DISCONNECTED"; }
     const char* getWifiStatus() const { return wifi_status_; }
 
+    /**
+     * @brief Configure server reachability status string.
+     */
+    void setServerStatus(const char* status_str) { server_status_ = status_str ? status_str : "UNKNOWN"; }
+    const char* getServerStatus() const { return server_status_; }
+
+    /**
+     * @brief Attach NetworkPush instance for CLI operations (WIFI commands).
+     */
+    void setNetworkPush(NetworkPush* net) { network_ = net; }
+    NetworkPush* getNetworkPush() const { return network_; }
+
 private:
     char rx_buffer_[RX_BUFFER_SIZE];
     size_t rx_len_ = 0;
@@ -152,6 +167,8 @@ private:
     uint32_t last_telemetry_ms_ = 0;
     uint32_t heartbeat_interval_ms_ = DEFAULT_HEARTBEAT_INTERVAL_MS;
     const char* wifi_status_ = "DISCONNECTED";
+    const char* server_status_ = "UNKNOWN";
+    NetworkPush* network_ = nullptr;
 
     void handleLineComplete(Stream& serial, CoasterDomain& domain, uint32_t now_ms);
     static void trimAndSanitize(const char* in, char* out, size_t out_max);

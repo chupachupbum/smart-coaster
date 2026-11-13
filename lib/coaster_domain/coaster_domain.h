@@ -107,6 +107,12 @@ public:
     static constexpr size_t EVENT_QUEUE_CAPACITY       = 16;
     static constexpr size_t STABILITY_BUFFER_CAPACITY   = 128; // Up to 80Hz sampling support
 
+    static constexpr float TAP_MIN_WEIGHT_G            = 60.0f;
+    static constexpr uint32_t TAP_MIN_DURATION_MS       = 40UL;
+    static constexpr uint32_t TAP_MAX_DURATION_MS       = 600UL;
+    static constexpr uint32_t TAP_WINDOW_MS             = 4000UL;
+    static constexpr size_t TAP_REQUIRED_COUNT         = 3;
+
     typedef void (*EventCallback)(const DomainEvent& event, void* user_data);
 
     explicit CoasterDomain(float daily_goal_ml = 2000.0f);
@@ -117,6 +123,7 @@ public:
     void reset();
     void set_daily_goal(float goal_ml);
     void set_demo_mode(bool enable);
+    bool consume_wifi_ap_trigger();
 
     const CoasterStatus& get_status() const { return status_; }
     bool is_demo_mode() const { return demo_mode_; }
@@ -145,6 +152,13 @@ private:
     uint32_t auto_tare_start_ms_ = 0;
     bool auto_tare_active_ = false;
 
+    bool tap_active_ = false;
+    uint32_t tap_start_ms_ = 0;
+    float tap_peak_g_ = 0.0f;
+    uint32_t tap_times_[TAP_REQUIRED_COUNT] = {0};
+    size_t tap_count_ = 0;
+    bool wifi_ap_trigger_pending_ = false;
+
     struct Sample {
         uint32_t time_ms;
         float weight_g;
@@ -168,6 +182,7 @@ private:
 
     void tick_state_machine(uint32_t now_ms);
     void tick_reminder_timers(uint32_t now_ms);
+    void evaluate_tap_gesture(uint32_t now_ms, float net_w);
     void update_progress_pct();
 
     void push_event(const DomainEvent& ev);

@@ -7,9 +7,8 @@
  *
  * Architecture & Rate Budget:
  * - Loop Tick (Continuous, ~0ms): UART RX stream polling & non-blocking CLI parser
- * - 50 Hz (20 ms): Status LED PWM sinusoidal breathing & celebration pattern engine
+ * - 50 Hz (20 ms): WS2812B 16-LED Ring animation & hydration status engine
  * - 20 Hz (50 ms): Weight sensor sampling, domain state machine update, and event pump
- * - 10 Hz (100 ms): SSD1306 128x64 OLED display frame rendering (400kHz Fast I2C)
  * - 20 Hz (50 ms): Network push state machine tick & ntfy.sh HTTP client dispatch
  * - 0.2 Hz (5000 ms): Periodic structured JSON telemetry heartbeat
  *
@@ -21,16 +20,15 @@
  */
 
 #include <Arduino.h>
-#include <Wire.h>
 
 #include "pins_config.h"
 #include "config.h"
 #include "coaster_domain.h"
 #include "hal/weight_sensor.h"
-#include "hal/display_oled.h"
-#include "hal/status_led.h"
+#include "hal/led_ring.h"
 #include "telemetry/telemetry_console.h"
 #include "net/network_push.h"
+#include "net/wifi_portal.h"
 
 // Configuration Fallbacks & Compatibility Aliases
 #ifndef CALIBRATION_SCALE_FACTOR
@@ -50,18 +48,17 @@
 // ============================================================================
 static CoasterDomain     domain(DEFAULT_DAILY_GOAL_ML);
 static WeightSensor      weight_sensor;
-static DisplayOled       display(&Wire);
-static StatusLed         status_led(PIN_STATUS_LED, LEDC_PWM_CHANNEL, LEDC_PWM_FREQ_HZ, LEDC_PWM_RESOLUTION);
+static LedRing           led_ring(PIN_LED_RING, LED_RING_PIXEL_COUNT, LED_RING_MAX_BRIGHTNESS);
 static TelemetryConsole  telemetry(TELEMETRY_HEARTBEAT_INTERVAL_MS);
 static NetworkPush       network;
+static WifiPortal        wifi_portal(domain, network, led_ring);
 
 // ============================================================================
 // Cooperative Scheduler Rate Budget (Intervals in Milliseconds)
 // ============================================================================
-static constexpr uint32_t INTERVAL_STATUS_LED_MS    = 20UL;   // 50 Hz: PWM breathing & patterns
+static constexpr uint32_t INTERVAL_LED_RING_MS      = 20UL;   // 50 Hz: WS2812B 16-LED ring animations
 static constexpr uint32_t INTERVAL_SENSOR_DOMAIN_MS = 50UL;   // 20 Hz: Weight sampling & domain evaluation
 static constexpr uint32_t INTERVAL_NETWORK_PUSH_MS  = 50UL;   // 20 Hz: Wi-Fi FSM & push notification queue
-static constexpr uint32_t INTERVAL_DISPLAY_OLED_MS  = 100UL;  // 10 Hz: SSD1306 OLED UI rendering
 
 // ============================================================================
 // Scheduler Timestamps (Rollover-Safe 32-Bit Millis Trackers)
@@ -69,7 +66,6 @@ static constexpr uint32_t INTERVAL_DISPLAY_OLED_MS  = 100UL;  // 10 Hz: SSD1306 
 static uint32_t last_led_ms           = 0;
 static uint32_t last_sensor_domain_ms = 0;
 static uint32_t last_net_ms           = 0;
-static uint32_t last_display_ms       = 0;
 
 // State Change Tracking (for un-evented state transitions)
 static CupState   last_cup_state       = CupState::EMPTY;
@@ -84,8 +80,8 @@ static bool       last_tick_had_events = false;
  *
  * Routing Responsibilities:
  * - TelemetryConsole: Emits single-line JSON telemetry for every domain event.
- * - StatusLed: Triggers celebratory triple-flash pattern on DRINK_LOGGED.
- * - DisplayOled: Triggers celebratory splash banner and forces immediate redraw on DRINK_LOGGED / REMINDER_ALERT.
+ * - LedRing: Triggers transient 16-LED ring animations (intake arc, drink ripple, refill ripple,
+ *   goal rainbow) and updates ring state immediately on alerts and placement events.
  * - NetworkPush: Queues HTTP POST push notifications for drink, reminder, repeat, and goal events.
  *
  * @param now_ms Current system timestamp in milliseconds.
@@ -104,38 +100,37 @@ static void dispatchDomainEvents(uint32_t now_ms) {
 
         // 2. Peripheral routing based on event type
         switch (ev.type) {
+            case DomainEventType::CUP_PLACED:
+                led_ring.triggerCupPlacedArc(now_ms, status.progress_pct);
+                led_ring.update(now_ms, status);
+                break;
+
             case DomainEventType::DRINK_LOGGED:
-                // Visual celebration: LED triple flash + OLED "+X ml consumed!" banner
-                status_led.triggerDrinkLoggedFlash(now_ms);
-                display.triggerDrinkSplash(ev.value1, now_ms);
-                // Force immediate OLED update to bypass 10Hz throttle
-                display.render(status, network.isConnected(), now_ms, true);
-                // Dispatch push notification to ntfy.sh
+                led_ring.triggerDrinkLogged(now_ms, status.progress_pct);
+                led_ring.update(now_ms, status);
                 network.handleDomainEvent(ev, status);
-                break;
-
-            case DomainEventType::REMINDER_ALERT:
-                // Primary inactivity reminder: queue push notification & force OLED banner
-                network.handleDomainEvent(ev, status);
-                display.render(status, network.isConnected(), now_ms, true);
-                break;
-
-            case DomainEventType::REPEAT_ALERT:
-                // Repeating hydration reminder: queue repeat push notification
-                network.handleDomainEvent(ev, status);
-                display.render(status, network.isConnected(), now_ms, true);
                 break;
 
             case DomainEventType::GOAL_REACHED:
-                // Daily goal achieved: queue congratulatory push notification
+                led_ring.triggerGoalReached(now_ms, status.progress_pct);
+                led_ring.update(now_ms, status);
                 network.handleDomainEvent(ev, status);
                 break;
 
             case DomainEventType::REFILL_DETECTED:
+                led_ring.triggerRefillDetected(now_ms);
+                led_ring.update(now_ms, status);
+                break;
+
+            case DomainEventType::REMINDER_ALERT:
+            case DomainEventType::REPEAT_ALERT:
+                network.handleDomainEvent(ev, status);
+                led_ring.update(now_ms, status);
+                break;
+
             case DomainEventType::AUTO_TARE_APPLIED:
             case DomainEventType::LIFT_NO_DRINK:
             case DomainEventType::STATE_CHANGE:
-            case DomainEventType::CUP_PLACED:
             case DomainEventType::CUP_LIFTED:
             default:
                 // Telemetry already emitted; no peripheral action required
@@ -187,26 +182,13 @@ void setup() {
     Serial.println(F(BOARD_BANNER_NAME));
     Serial.println(F("=================================================="));
 
-    // 2. Safe I2C Bus Initialization: PIN_OLED_SDA, PIN_OLED_SCL at 400kHz Fast-Mode
-    Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
-    Wire.setClock(400000);
+    // 2. WS2812B 16-LED Ring Initialization
+    led_ring.begin(PIN_LED_RING);
+    led_ring.update(0, domain.get_status());
+    Serial.print(F("[BOOT] WS2812B 16-LED Ring initialized on GPIO "));
+    Serial.println(PIN_LED_RING);
 
-    // 3. SSD1306 OLED UI Display Initialization
-    if (display.begin(OLED_I2C_ADDR, &Wire)) {
-        display.showBootScreen("SMART CUP STAND", "Initializing...");
-        Serial.println(F("[BOOT] SSD1306 OLED display initialized @ 0x3C (400kHz)"));
-    } else {
-        Serial.println(F("[WARN] SSD1306 OLED not detected @ 0x3C; continuing in headless mode"));
-    }
-
-    // 4. Status LED Initialization (LEDC PWM on PIN_STATUS_LED, 5kHz, 8-bit)
-    status_led.begin(PIN_STATUS_LED, LEDC_PWM_CHANNEL, LEDC_PWM_FREQ_HZ, LEDC_PWM_RESOLUTION);
-    status_led.update(0, CupState::EMPTY, AlertState::IDLE);
-    Serial.print(F("[BOOT] Status LED initialized on GPIO "));
-    Serial.print(PIN_STATUS_LED);
-    Serial.println(F(" (5kHz PWM)"));
-
-    // 5. HX711 Weight Sensor Interface: PIN_HX711_DT (DT), PIN_HX711_SCK (SCK), 0.42 counts/g
+    // 3. HX711 Weight Sensor Interface: PIN_HX711_DT (DT), PIN_HX711_SCK (SCK), 0.42 counts/g
     weight_sensor.begin(PIN_HX711_DT, PIN_HX711_SCK, CALIBRATION_SCALE_FACTOR);
     Serial.print(F("[BOOT] HX711 weight sensor initialized on GPIO "));
     Serial.print(PIN_HX711_DT);
@@ -233,14 +215,19 @@ void setup() {
         Serial.println(F("[BOOT] HX711 conversion pending; deferred to cooperative loop"));
     }
 
-    // 6. Network Push Client & Wi-Fi Initialization
+    // 4. Network Push Client & Wi-Fi Initialization
     network.begin(WIFI_SSID, WIFI_PASS, NTFY_TOPIC, NTFY_SERVER_URL);
     Serial.print(F("[BOOT] Wi-Fi client started for SSID: "));
     Serial.println(WIFI_SSID);
 
-    // 7. Telemetry Console & Initial SYSTEM_BOOT Emission
+    // 5. Telemetry Console & Initial SYSTEM_BOOT Emission
     telemetry.begin();
+    telemetry.setNetworkPush(&network);
     telemetry.setWifiStatus(network.getWifiStateStr());
+    telemetry.setServerStatus(network.getServerReachabilityStr());
+
+    // 6. Wi-Fi Captive Portal & WebServer Initialization
+    wifi_portal.begin();
 
     const uint32_t boot_now_ms = millis();
     telemetry.emitTelemetry(Serial, domain.get_status(), "SYSTEM_BOOT", boot_now_ms);
@@ -253,7 +240,6 @@ void setup() {
     last_led_ms           = boot_now_ms;
     last_sensor_domain_ms = boot_now_ms;
     last_net_ms           = boot_now_ms;
-    last_display_ms       = boot_now_ms;
 
     Serial.println(F("[BOOT] Initialization complete. Entering scheduler loop.\n"));
 }
@@ -269,8 +255,8 @@ void loop() {
     // ------------------------------------------------------------------------
     telemetry.processUart(Serial, domain, now_ms);
 
-    // Keep StatusLed breathing rate in sync with domain DEMO mode
-    status_led.setDemoMode(domain.is_demo_mode());
+    // Keep LedRing animation rates in sync with domain DEMO mode
+    led_ring.setDemoMode(domain.is_demo_mode());
 
     // ------------------------------------------------------------------------
     // Task 2: 20 Hz (50 ms) - Weight Sensor Sampling & Domain Event Pump
@@ -284,6 +270,12 @@ void loop() {
         // Update core domain logic
         domain.update(raw_weight_g, now_ms);
 
+        if (domain.consume_wifi_ap_trigger()) {
+            telemetry.emitTelemetry(Serial, domain.get_status(), "WIFI_AP_TRIGGER", now_ms);
+            network.startApFallback(now_ms);
+            led_ring.setWifiApActive(true);
+        }
+
         // Central Domain Event Pump: Drain and route all domain events
         dispatchDomainEvents(now_ms);
 
@@ -292,42 +284,36 @@ void loop() {
     }
 
     // ------------------------------------------------------------------------
-    // Task 3: 50 Hz (20 ms) - Status LED PWM Breathing & Pattern Engine
+    // Task 3: 50 Hz (20 ms) - WS2812B 16-LED Ring Animation & Status Engine
     // ------------------------------------------------------------------------
-    if (static_cast<uint32_t>(now_ms - last_led_ms) >= INTERVAL_STATUS_LED_MS) {
+    if (static_cast<uint32_t>(now_ms - last_led_ms) >= INTERVAL_LED_RING_MS) {
         last_led_ms = now_ms;
 
-        const CoasterStatus& status = domain.get_status();
-        status_led.update(now_ms, status.cup_state, status.alert_state);
+        led_ring.update(now_ms, domain.get_status());
     }
 
     // ------------------------------------------------------------------------
-    // Task 4: 10 Hz (100 ms) - SSD1306 OLED UI Render
-    // ------------------------------------------------------------------------
-    if (static_cast<uint32_t>(now_ms - last_display_ms) >= INTERVAL_DISPLAY_OLED_MS) {
-        last_display_ms = now_ms;
-
-        const CoasterStatus& status = domain.get_status();
-        display.render(status, network.isConnected(), now_ms);
-    }
-
-    // ------------------------------------------------------------------------
-    // Task 5: 20 Hz (50 ms) - Wi-Fi State Machine & Push Notification Queue
+    // Task 4: 20 Hz (50 ms) - Wi-Fi State Machine & Push Notification Queue
     // ------------------------------------------------------------------------
     if (static_cast<uint32_t>(now_ms - last_net_ms) >= INTERVAL_NETWORK_PUSH_MS) {
         last_net_ms = now_ms;
 
         network.update(now_ms);
+        wifi_portal.update(now_ms);
+        led_ring.setWifiApActive(network.isApActive());
+        if (network.consumeWifiConnectedTrigger()) led_ring.triggerWifiConnected(now_ms);
+        if (network.consumeWifiErrorTrigger()) led_ring.triggerWifiError(now_ms);
         telemetry.setWifiStatus(network.getWifiStateStr());
+        telemetry.setServerStatus(network.getServerReachabilityStr());
     }
 
     // ------------------------------------------------------------------------
-    // Task 6: Periodic Telemetry Heartbeat (5000 ms if no events emitted)
+    // Task 5: Periodic Telemetry Heartbeat (5000 ms if no events emitted)
     // ------------------------------------------------------------------------
     telemetry.update(Serial, domain.get_status(), now_ms);
 
     // ------------------------------------------------------------------------
-    // Task 7: Cooperative Yield to FreeRTOS IDLE Task (Feeds TWDT Watchdog)
+    // Task 6: Cooperative Yield to FreeRTOS IDLE Task (Feeds TWDT Watchdog)
     // ------------------------------------------------------------------------
     delay(1);
 }

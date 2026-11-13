@@ -3,9 +3,8 @@
 
 Simulates the cooperative multi-rate scheduler implemented in src/main.cpp:
 - Loop Tick (Continuous, ~0ms)
-- 50 Hz (20 ms): Status LED PWM engine
+- 50 Hz (20 ms): 16-Pixel WS2812B LED Ring animation engine
 - 20 Hz (50 ms): Weight sensor sampling & domain event pump
-- 10 Hz (100 ms): OLED UI rendering
 - 20 Hz (50 ms): Network push & Wi-Fi FSM
 - 0.2 Hz (5000 ms): Telemetry heartbeat
 
@@ -13,13 +12,12 @@ Test Scenarios:
 1. 100,000-cycle soak test verifying task rate frequencies and distributions.
 2. 32-bit millisecond rollover test across 0xFFFFFFFF -> 0x00000000 proving zero lockup/starvation.
 3. Realistic execution jitter simulation (variable FreeRTOS tick duration 1-4ms).
-4. Boundary analysis of DisplayOled::triggerDrinkSplash rollover vulnerability.
+4. LedRing transient animation rollover safety verification across 0xFFFFFFFF.
 """
 
 import sys
-import math
 import statistics
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 UINT32_MAX = 0xFFFFFFFF
 UINT32_MASK = 0xFFFFFFFF
@@ -35,16 +33,14 @@ class SchedulerSimulation:
         self.now_ms = start_ms & UINT32_MASK
 
         # Task rate intervals (milliseconds)
-        self.INTERVAL_LED = 20        # 50 Hz
-        self.INTERVAL_SENSOR = 50     # 20 Hz
-        self.INTERVAL_OLED = 100      # 10 Hz
-        self.INTERVAL_NET = 50        # 20 Hz
+        self.INTERVAL_LED_RING = 20    # 50 Hz
+        self.INTERVAL_SENSOR = 50      # 20 Hz
+        self.INTERVAL_NET = 50         # 20 Hz
         self.INTERVAL_HEARTBEAT = 5000 # 0.2 Hz
 
         # Last execution timestamps
         self.last_led_ms = self.now_ms
         self.last_sensor_ms = self.now_ms
-        self.last_oled_ms = self.now_ms
         self.last_net_ms = self.now_ms
         self.last_heartbeat_ms = self.now_ms
 
@@ -52,7 +48,6 @@ class SchedulerSimulation:
         self.history_uart: List[int] = []
         self.history_led: List[int] = []
         self.history_sensor: List[int] = []
-        self.history_oled: List[int] = []
         self.history_net: List[int] = []
         self.history_heartbeat: List[int] = []
 
@@ -66,27 +61,22 @@ class SchedulerSimulation:
             self.last_sensor_ms = self.now_ms
             self.history_sensor.append(self.now_ms)
 
-        # Task 3: 50 Hz Status LED
-        if u32_diff(self.now_ms, self.last_led_ms) >= self.INTERVAL_LED:
+        # Task 3: 50 Hz LED Ring
+        if u32_diff(self.now_ms, self.last_led_ms) >= self.INTERVAL_LED_RING:
             self.last_led_ms = self.now_ms
             self.history_led.append(self.now_ms)
 
-        # Task 4: 10 Hz OLED UI
-        if u32_diff(self.now_ms, self.last_oled_ms) >= self.INTERVAL_OLED:
-            self.last_oled_ms = self.now_ms
-            self.history_oled.append(self.now_ms)
-
-        # Task 5: 20 Hz Network Push
+        # Task 4: 20 Hz Network Push
         if u32_diff(self.now_ms, self.last_net_ms) >= self.INTERVAL_NET:
             self.last_net_ms = self.now_ms
             self.history_net.append(self.now_ms)
 
-        # Task 6: 0.2 Hz Telemetry Heartbeat
+        # Task 5: 0.2 Hz Telemetry Heartbeat
         if u32_diff(self.now_ms, self.last_heartbeat_ms) >= self.INTERVAL_HEARTBEAT:
             self.last_heartbeat_ms = self.now_ms
             self.history_heartbeat.append(self.now_ms)
 
-        # Task 7: Cooperative yield advances time
+        # Task 6: Cooperative yield advances time
         self.now_ms = (self.now_ms + step_ms) & UINT32_MASK
 
 
@@ -126,9 +116,8 @@ def run_soak_test_100k_cycles() -> bool:
 
     tasks = [
         ("UART CLI (Cont.)", "Continuous (1ms)", sim.history_uart, 1, 100_000),
-        ("Status LED", "20 ms (50 Hz)", sim.history_led, 20, 5000),
+        ("LED Ring (50 Hz)", "20 ms (50 Hz)", sim.history_led, 20, 5000),
         ("Sensor & Domain", "50 ms (20 Hz)", sim.history_sensor, 50, 2000),
-        ("OLED Display", "100 ms (10 Hz)", sim.history_oled, 100, 1000),
         ("Network Push", "50 ms (20 Hz)", sim.history_net, 50, 2000),
         ("Heartbeat", "5000 ms (0.2 Hz)", sim.history_heartbeat, 5000, 20),
     ]
@@ -136,8 +125,6 @@ def run_soak_test_100k_cycles() -> bool:
     all_pass = True
     for name, nom_str, hist, nom_interval, exp_count in tasks:
         st = compute_interval_stats(hist)
-        # Check that intervals are strictly exact (stddev == 0 for uniform 1ms ticks)
-        # Count is within 1 of theoretical maximum (due to boundary offset)
         passed = (st["min"] == nom_interval or st["min"] == 0) and (st["max"] == nom_interval or st["max"] == 0) and (abs(len(hist) - exp_count) <= 1)
         if not passed:
             all_pass = False
@@ -173,9 +160,8 @@ def run_rollover_test() -> bool:
 
     all_pass = True
     histories = {
-        "Status LED": (sim.history_led, 20),
+        "LED Ring (50 Hz)": (sim.history_led, 20),
         "Sensor & Domain": (sim.history_sensor, 50),
-        "OLED Display": (sim.history_oled, 100),
         "Network Push": (sim.history_net, 50),
         "Heartbeat": (sim.history_heartbeat, 5000),
     }
@@ -207,7 +193,7 @@ def run_rollover_test() -> bool:
 
 def run_jitter_soak_test() -> bool:
     print("\n" + "=" * 70)
-    print("TEST 3: Non-Uniform Execution Jitter Soak Test (Simulating I2C & Delays)")
+    print("TEST 3: Non-Uniform Execution Jitter Soak Test (Simulating Delays)")
     print("=" * 70)
 
     sim = SchedulerSimulation(start_ms=0)
@@ -239,9 +225,8 @@ def run_jitter_soak_test() -> bool:
     print("-" * 70)
 
     tasks = [
-        ("Status LED", 50.0, sim.history_led, 20),
+        ("LED Ring", 50.0, sim.history_led, 20),
         ("Sensor & Domain", 20.0, sim.history_sensor, 50),
-        ("OLED Display", 10.0, sim.history_oled, 100),
         ("Network Push", 20.0, sim.history_net, 50),
         ("Heartbeat", 0.2, sim.history_heartbeat, 5000),
     ]
@@ -250,9 +235,7 @@ def run_jitter_soak_test() -> bool:
     for name, exp_rate, hist, nominal_int in tasks:
         obs_rate = len(hist) / total_time_s
         st = compute_interval_stats(hist)
-        # With cooperative jitter, rate tracks actual elapsed time within 3%
         rate_err = abs(obs_rate - exp_rate) / exp_rate
-        # For low frequency heartbeat (0.2 Hz), 1 tick in 75s is ~7% variance
         tol = 0.10 if exp_rate < 1.0 else 0.05
         passed = rate_err < tol
         if not passed:
@@ -263,56 +246,59 @@ def run_jitter_soak_test() -> bool:
     return all_pass
 
 
-def run_oled_splash_rollover_challenge() -> bool:
+def run_led_ring_rollover_safety_test() -> bool:
     print("\n" + "=" * 70)
-    print("TEST 4: Empirical Rollover Boundary Analysis of DisplayOled Splash Screen")
+    print("TEST 4: LedRing Transient Animation 32-Bit Rollover Safety Check")
     print("=" * 70)
 
+    def anim_is_active(active_flag: bool, start_ms: int, now_ms: int, duration_ms: int) -> bool:
+        if not active_flag:
+            return False
+        return u32_diff(now_ms, start_ms) < duration_ms
+
+    # Scenario A: 3000ms RAINBOW_GOAL / INTAKE_ARC triggered 1000ms before rollover
     duration_ms = 3000
+    trigger_ms = UINT32_MAX - 1000
+    active = True
 
-    # Scenario A: Drink logged 1000ms before rollover
-    trigger_now = UINT32_MAX - 1000
-    splash_until = (trigger_now + duration_ms) & UINT32_MASK  # 1999
+    at_500 = (trigger_ms + 500) & UINT32_MASK
+    at_1500 = (trigger_ms + 1500) & UINT32_MASK  # Wrapped past 0
+    at_2999 = (trigger_ms + 2999) & UINT32_MASK
+    at_3000 = (trigger_ms + 3000) & UINT32_MASK
 
-    print(f"Trigger Timestamp    : 0x{trigger_now:08X} ({trigger_now})")
-    print(f"Calculated Deadline  : 0x{splash_until:08X} ({splash_until}) (Wrapped!)")
+    ok_500 = anim_is_active(active, trigger_ms, at_500, duration_ms) is True
+    ok_1500 = anim_is_active(active, trigger_ms, at_1500, duration_ms) is True
+    ok_2999 = anim_is_active(active, trigger_ms, at_2999, duration_ms) is True
+    ok_3000 = anim_is_active(active, trigger_ms, at_3000, duration_ms) is False
 
-    check1_ms = trigger_now + 500
-    is_showing_1 = (check1_ms < splash_until)
-    print(f"  At t = trigger + 500ms (0x{check1_ms:08X}): now_ms < splash_until -> {is_showing_1} (EXPECTED TRUE, GOT FALSE!)")
-
-    check2_ms = 500
-    is_showing_2 = (check2_ms < splash_until)
-    print(f"  At t = trigger + 1500ms (0x{check2_ms:08X}): now_ms < splash_until -> {is_showing_2} (SHOWING LATE)")
-
-    # Scenario B: Stale splash from day 1 re-appearing 49.7 days later
+    # Scenario B: Expired animation with active=False never resurrects after rollover
     day1_trigger = 50_000
-    day1_deadline = day1_trigger + duration_ms  # 53,000
+    active_after_expiry = False
+    post_rollover_ms = 51_000
+    no_resurrection = anim_is_active(active_after_expiry, day1_trigger, post_rollover_ms, duration_ms) is False
 
-    post_rollover_ms = 100
-    is_showing_stale = (post_rollover_ms < day1_deadline)
-    print(f"\nScenario B (Stale Splash Re-appearance):")
-    print(f"  Day 1 Splash Deadline : {day1_deadline} ms")
-    print(f"  At t = 49.7 days (t=100ms after rollover): now_ms < day1_deadline -> {is_showing_stale} (BUG: STALE SPLASH RESURRECTED!)")
+    print(f"  Trigger at 0x{trigger_ms:08X}, duration {duration_ms}ms:")
+    print(f"    +500ms  (0x{at_500:08X}): active={ok_500}")
+    print(f"    +1500ms (0x{at_1500:08X}): active={ok_1500}")
+    print(f"    +2999ms (0x{at_2999:08X}): active={ok_2999}")
+    print(f"    +3000ms (0x{at_3000:08X}): expired={ok_3000}")
+    print(f"    Expired flag post-rollover check: safe={no_resurrection}")
 
-    bug_found = (not is_showing_1) or is_showing_stale
-    if bug_found:
-        print("\n--> EMPIRICAL VULNERABILITY CONFIRMED: DisplayOled uses direct `<` comparison")
-        print("    instead of rollover-safe subtraction `(now_ms - splash_start_ms) < duration_ms`")
-        print("    with an explicit `splash_active_` flag!")
-    return bug_found
+    passed = ok_500 and ok_1500 and ok_2999 and ok_3000 and no_resurrection
+    return passed
 
 
 if __name__ == "__main__":
     p1 = run_soak_test_100k_cycles()
     p2 = run_rollover_test()
     p3 = run_jitter_soak_test()
-    p4 = run_oled_splash_rollover_challenge()
+    p4 = run_led_ring_rollover_safety_test()
 
     print("\n" + "=" * 70)
     print("EMPIRICAL TEST SUMMARY:")
     print(f"  100k Soak Test            : {'PASS' if p1 else 'FAIL'}")
     print(f"  32-Bit Rollover Test      : {'PASS' if p2 else 'FAIL'}")
     print(f"  Jitter Test               : {'PASS' if p3 else 'FAIL'}")
-    print(f"  OLED Splash Rollover Bug  : {'CONFIRMED VULNERABILITY' if p4 else 'CLEAN'}")
+    print(f"  LedRing Rollover Safety   : {'PASS' if p4 else 'FAIL'}")
     print("=" * 70)
+    sys.exit(0 if (p1 and p2 and p3 and p4) else 1)

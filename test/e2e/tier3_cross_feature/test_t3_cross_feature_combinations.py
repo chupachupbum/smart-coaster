@@ -201,30 +201,56 @@ class TestT3CrossFeatureCombinations:
         assert_consumed_ml(harness.telemetry, 75.0)
         assert_event(harness.events, "DRINK_LOGGED", {"drink_delta_ml": 75.0})
 
-    def test_display_and_led_state_synchronization(self):
-        """Pairwise: OLED badge and LED breathing engine track state transitions."""
+    def test_led_ring_state_synchronization(self):
+        """Pairwise: 16-LED ring state machine tracks lifecycle transitions, chaining, and alerts."""
         harness = E2ETestHarness()
         # 1. EMPTY state
-        assert harness.display["badge"] == "[EMPTY]"
+        assert_state(harness.telemetry, "EMPTY")
         assert harness.led["mode"] == "OFF"
+        assert harness.led["active_leds"] == 0
 
         # 2. STABILIZING state
         harness.tick(duration_ms=200, step_ms=50, weight_g=300.0)
-        assert harness.display["badge"] == "[WAIT]"
-        assert harness.led["mode"] == "BLINK"
+        assert_state(harness.telemetry, "STABILIZING")
+        assert harness.led["mode"] == "SPINNER"
+        assert harness.led["active_leds"] == 3
 
-        # 3. CUP_PRESENT state
+        # 3. CUP_PRESENT (first 3s after placement -> INTAKE_ARC)
         harness.tick(duration_ms=1600, step_ms=50, weight_g=300.0)
-        assert harness.display["badge"] == "[CUP]"
-        assert harness.led["mode"] == "STEADY_LOW"
+        assert_state(harness.telemetry, "CUP_PRESENT")
+        assert harness.led["mode"] == "INTAKE_ARC"
+        assert harness.led["active_leds"] >= 1
 
-        # 4. CUP_LIFTED state
+        # 4. CUP_PRESENT (after 3s arc expires -> AMBIENT_WARM)
+        harness.advance_time(duration_ms=3100, step_ms=100)
+        assert harness.led["mode"] == "AMBIENT_WARM"
+        assert harness.led["active_leds"] == 16
+
+        # 5. CUP_LIFTED state -> LIFTED_GLOW
         harness.lift_cup(duration_ms=500)
-        assert harness.display["badge"] == "[LIFT]"
+        assert_state(harness.telemetry, "CUP_LIFTED")
+        assert harness.led["mode"] == "LIFTED_GLOW"
+        assert harness.led["active_leds"] == 16
 
-        # 5. Return to CUP_PRESENT and trigger ALERT_DUE
-        harness.return_cup(weight_g=300.0, duration_ms=2000)
+        # 6. Return cup with drink (-100ml) -> RIPPLE_DRINK (1s) -> INTAKE_ARC (3s) -> AMBIENT_WARM
+        harness.return_cup(weight_g=200.0, duration_ms=1600)
+        assert_event(harness.events, "DRINK_LOGGED")
+        assert harness.led["mode"] == "RIPPLE_DRINK"
+        assert harness.led["is_alert"] is False
+
+        harness.advance_time(duration_ms=1100, step_ms=100)
+        assert harness.led["mode"] == "INTAKE_ARC"
+        assert harness.led["active_leds"] >= 1
+
+        harness.advance_time(duration_ms=3100, step_ms=100)
+        assert harness.led["mode"] == "AMBIENT_WARM"
+        assert harness.led["active_leds"] == 16
+
+        # 7. ALERT_DUE -> ALERT_BREATHING, then ALERT_REPEAT -> ALERT_URGENT
         harness.advance_time(duration_ms=2705 * 1000, step_ms=5000)
-        assert harness.display["badge"] == "[ALERT]"
-        assert harness.led["mode"] == "BREATHING"
+        assert harness.led["mode"] == "ALERT_BREATHING"
+        assert harness.led["is_alert"] is True
+
+        harness.advance_time(duration_ms=305 * 1000, step_ms=5000)
+        assert harness.led["mode"] == "ALERT_URGENT"
         assert harness.led["is_alert"] is True

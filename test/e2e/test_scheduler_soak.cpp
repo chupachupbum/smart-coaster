@@ -19,12 +19,10 @@ int main() {
 
     uint32_t last_sensor_domain_ms = now_ms;
     uint32_t last_led_ms = now_ms;
-    uint32_t last_display_ms = now_ms;
     uint32_t last_net_ms = now_ms;
 
     uint32_t count_sensor = 0;
     uint32_t count_led = 0;
-    uint32_t count_oled = 0;
     uint32_t count_net = 0;
 
     float current_weight_g = 0.0f;
@@ -51,16 +49,10 @@ int main() {
             count_sensor++;
         }
 
-        // 50Hz LED update
+        // 50Hz LED Ring update
         if (static_cast<uint32_t>(now_ms - last_led_ms) >= 20) {
             last_led_ms = now_ms;
             count_led++;
-        }
-
-        // 10Hz OLED update
-        if (static_cast<uint32_t>(now_ms - last_display_ms) >= 100) {
-            last_display_ms = now_ms;
-            count_oled++;
         }
 
         // 20Hz Network update
@@ -73,14 +65,12 @@ int main() {
     std::cout << "Simulation Completed: 100,000 steps\n";
     std::cout << "Rollover Observed    : " << (rollover_observed ? "YES" : "NO") << "\n";
     std::cout << "Task 2 (Sensor/Domain): " << count_sensor << " executions\n";
-    std::cout << "Task 3 (Status LED)   : " << count_led << " executions\n";
-    std::cout << "Task 4 (OLED Display) : " << count_oled << " executions\n";
-    std::cout << "Task 5 (Network Push) : " << count_net << " executions\n";
+    std::cout << "Task 3 (LED Ring 50Hz): " << count_led << " executions\n";
+    std::cout << "Task 4 (Network Push) : " << count_net << " executions\n";
 
     assert(rollover_observed);
     assert(count_sensor == 1999 || count_sensor == 2000);
     assert(count_led == 4999 || count_led == 5000);
-    assert(count_oled == 999 || count_oled == 1000);
     assert(count_net == 1999 || count_net == 2000);
 
     // Verify domain state survived rollover cleanly

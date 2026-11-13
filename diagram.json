@@ -13,54 +13,108 @@
     {
       "type": "wokwi-hx711",
       "id": "hx711",
-      "top": -150,
-      "left": -120,
+      "top": -40,
+      "left": -170,
       "attrs": {
         "type": "5kg"
       }
     },
     {
-      "type": "board-ssd1306",
-      "id": "oled",
-      "top": -150,
-      "left": 120,
-      "attrs": {
-        "i2cAddress": "0x3c"
-      }
-    },
-    {
       "type": "wokwi-resistor",
       "id": "r1",
-      "top": 120,
-      "left": -80,
+      "top": 85,
+      "left": 125,
       "attrs": {
-        "value": "220"
+        "value": "330"
       }
     },
     {
-      "type": "wokwi-led",
-      "id": "led1",
-      "top": 120,
-      "left": 40,
+      "type": "wokwi-led-ring",
+      "id": "ring1",
+      "top": -115,
+      "left": 155,
       "attrs": {
-        "color": "green"
+        "pixels": "16"
       }
     }
   ],
   "connections": [
-    [ "esp:TX", "$serialMonitor:RX", "", [] ],
-    [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "esp:3V3.1", "oled:VCC", "red", [ "v0" ] ],
-    [ "esp:GND.1", "oled:GND", "black", [ "v0" ] ],
-    [ "esp:4", "oled:SDA", "green", [ "v0" ] ],
-    [ "esp:5", "oled:SCL", "blue", [ "v0" ] ],
-    [ "esp:5V.1", "hx711:VCC", "red", [ "v0" ] ],
-    [ "esp:GND.2", "hx711:GND", "black", [ "v0" ] ],
-    [ "esp:6", "hx711:DT", "gold", [ "v0" ] ],
-    [ "esp:7", "hx711:SCK", "cyan", [ "v0" ] ],
-    [ "esp:3", "r1:1", "orange", [ "v0" ] ],
-    [ "r1:2", "led1:A", "orange", [ "v0" ] ],
-    [ "esp:GND.3", "led1:C", "black", [ "v0" ] ]
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "esp:5V.1",
+      "hx711:VCC",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:GND.2",
+      "hx711:GND",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:6",
+      "hx711:DT",
+      "gold",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:7",
+      "hx711:SCK",
+      "cyan",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:5V.1",
+      "ring1:VCC",
+      "red",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:GND.1",
+      "ring1:GND",
+      "black",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "esp:3",
+      "r1:1",
+      "orange",
+      [
+        "v0"
+      ]
+    ],
+    [
+      "r1:2",
+      "ring1:DIN",
+      "green",
+      [
+        "v0"
+      ]
+    ]
   ],
   "serialMonitor": {
     "display": "always",
@@ -68,4 +122,3 @@
   },
   "dependencies": {}
 }
-
